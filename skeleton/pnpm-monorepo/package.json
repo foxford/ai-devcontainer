@@ -38,6 +38,9 @@
       "test",
       "lint:eslint",
       "lint:type-check"
-    ]
+    ],
+    "overrides": {
+      "esbuild@>=0.0.0 <0.28.2": "0.28.2"
+    }
   }
 }
