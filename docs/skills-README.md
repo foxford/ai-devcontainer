@@ -1,7 +1,7 @@
 # `.agents/skills/` — проектный слой скиллов
 
 Тех-скиллы (Claude / OpenCode / Codex / Hermes) приезжают из платформы и
-обновляются централизованно — `ai-devcontainer update` на хосте. Здесь, в
+обновляются централизованно — `adc update` на хосте. Здесь, в
 репозитории проекта, лежит **только то, чем он отличается**: форки отдельных
 файлов и собственные скиллы. Пустой каталог — нормальное состояние.
 
@@ -11,22 +11,22 @@
 ## Команды
 
 ```bash
-ai-devcontainer skill list                     # что откуда приезжает
-ai-devcontainer skill fork <скилл> [файл…]     # взять под правку (по умолчанию SKILL.md)
-ai-devcontainer skill status                   # разошлась ли платформа под форками
-ai-devcontainer skill unfork <скилл> [файл]    # вернуться на платформенную версию
-ai-devcontainer skill sync                     # пересобрать после ai-devcontainer update
+adc skill list                     # что откуда приезжает
+adc skill fork <скилл> [файл…]     # взять под правку (по умолчанию SKILL.md)
+adc skill status                   # разошлась ли платформа под форками
+adc skill unfork <скилл> [файл]    # вернуться на платформенную версию
+adc skill sync                     # пересобрать после adc update
 ```
 
 Если команды нет в PATH (контейнер поднят до её появления):
-`ln -sfn /opt/ai-devcontainer/bin/ai-devcontainer ~/.local/bin/ai-devcontainer`.
+`ln -sfn /opt/ai-devcontainer/bin/adc ~/.local/bin/adc`.
 
 ## Как форкать
 
 Перекрыть можно **любой** файл скилла, не только `SKILL.md`:
 
 ```bash
-ai-devcontainer skill fork impeccable scripts/live.mjs
+adc skill fork impeccable scripts/live.mjs
 ```
 
 заберёт под проект один скрипт, а остальные файлы скилла продолжат ехать с
@@ -55,4 +55,4 @@ ai-devcontainer skill fork impeccable scripts/live.mjs
 что читает) намеренно живёт не здесь, а в генерируемом `AGENTS.skills.md`: оно
 зависит от версии платформы и в трекаемом файле проекта протухло бы. Здесь —
 только команды, они стабильны. Обновляется этот README из платформы командой
-`ai-devcontainer skill migrate`.
+`adc skill migrate`.

@@ -14,7 +14,7 @@ pnpm install
 ```
 
 Окружение приезжает из **ai-devcontainer**: тулчейн запечён в образ `dev-base:local`,
-скрипты и скиллы монтируются из клона платформы. Обновление — `ai-devcontainer update`
+скрипты и скиллы монтируются из клона платформы. Обновление — `adc update`
 на хосте и Rebuild Container здесь. Подробности devcontainer'а — в
 [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# bin/ai-devcontainer — check_project_devcontainer / cmd_doctor / диспетчер.
+# bin/adc — check_project_devcontainer / cmd_doctor / диспетчер.
 # check_project_devcontainer вызывается через `doctor` (единственный публичный
 # путь до него без служебных флагов).
 
@@ -8,7 +8,7 @@ setup() {
   load '../bats/lib/bats-assert/load'
   load '../helpers/fixtures'
 
-  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/ai-devcontainer"
+  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/adc"
   PLATFORM_FIXTURE="$(make_platform_fixture)"
   REPO_DIR="$(make_repo_fixture)"
 }
@@ -25,7 +25,7 @@ run_doctor() {
 full_devcontainer_json() {
   cat > "$REPO_DIR/.devcontainer/devcontainer.json" <<'EOF'
 {
-  "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare",
+  "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare",
   "mounts": [
     "source=${localEnv:HOME}/.local/share/ai-devcontainer,target=/opt/ai-devcontainer,type=bind,readonly",
     "source=platform-playwright-browsers,target=/home/node/.cache/ms-playwright,type=volume",
@@ -53,7 +53,7 @@ EOF
 
 @test "нет маунта клона платформы — подсказка с готовой строкой" {
   mkdir -p "$REPO_DIR/.devcontainer"
-  echo '{"initializeCommand": "ai-devcontainer prepare"}' > "$REPO_DIR/.devcontainer/devcontainer.json"
+  echo '{"initializeCommand": "adc prepare"}' > "$REPO_DIR/.devcontainer/devcontainer.json"
   run_doctor
   assert_success
   assert_output --partial "нет маунта клона платформы"
@@ -63,7 +63,7 @@ EOF
 @test "initializeCommand старой формы (ensure-image без prepare) — предупреждение" {
   mkdir -p "$REPO_DIR/.devcontainer"
   full_devcontainer_json
-  sed -i 's/ai-devcontainer prepare.*prepare"/ensure-image manual"/' "$REPO_DIR/.devcontainer/devcontainer.json"
+  sed -i 's/adc prepare.*prepare"/ensure-image manual"/' "$REPO_DIR/.devcontainer/devcontainer.json"
   run_doctor
   assert_success
   assert_output --partial "старой формы"
@@ -91,7 +91,7 @@ EOF
   mkdir -p "$REPO_DIR/.devcontainer"
   cat > "$REPO_DIR/.devcontainer/devcontainer.json" <<'EOF'
 {
-  "initializeCommand": "ai-devcontainer prepare",
+  "initializeCommand": "adc prepare",
   // "source=x,target=/opt/ai-devcontainer,type=bind,readonly"
   "postCreateCommand": "bash /opt/ai-devcontainer/tooling/post-create-setup.sh"
 }
@@ -118,5 +118,5 @@ EOF
 @test "help выводит справку" {
   AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" run bash "$BIN" help
   assert_success
-  assert_output --partial "ai-devcontainer new"
+  assert_output --partial "adc new"
 }

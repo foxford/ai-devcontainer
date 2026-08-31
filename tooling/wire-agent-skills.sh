@@ -7,7 +7,7 @@
 #
 # Перекрытие ПОФАЙЛОВОЕ: проект может держать только `SKILL.md`, а `scripts/`
 # и `reference/` продолжат ехать с платформы. Это и есть смысл затеи —
-# `ai-devcontainer update` меняет стоковую часть во всех проектах сразу, а в гите
+# `adc update` меняет стоковую часть во всех проектах сразу, а в гите
 # проекта лежит ровно то, чем он отличается.
 #
 # Результат сборки — НАСТОЯЩИЙ каталог .claude/skills/<skill>/ из симлинков на
@@ -23,7 +23,7 @@
 #     молча игнорируя проектный форк соседнего файла. С копиями относительные
 #     пути резолвятся внутри собранного дерева и форк любого файла срабатывает.
 #     Цена — код обновляется не мгновенно, а на пересборке (postCreate или
-#     `ai-devcontainer skill sync`). ~3 МБ на проект, каталог в .gitignore.
+#     `adc skill sync`). ~3 МБ на проект, каталог в .gitignore.
 #
 # Кто и как читает результат:
 #   - Claude Code — .claude/skills/<name>/ (проверено грепом бинаря: 54× ".claude/skills")
@@ -36,7 +36,7 @@
 #                   ФОРКИ — платформенный слой без .dsh/skills он бы не увидел.
 #
 # Индекс скиллов пишется в AGENTS.skills.md (генерируемый, в .gitignore).
-# В AGENTS.md — только статичная ссылка на него: иначе каждый `ai-devcontainer update`
+# В AGENTS.md — только статичная ссылка на него: иначе каждый `adc update`
 # давал бы диф в трекаемом файле проекта, которого человек не делал.
 #
 # Идемпотентно и без зависимостей (coreutils + awk). Безопасно гонять много раз.
@@ -306,14 +306,14 @@ extract_field() {
   printf 'пересобирается): Claude и OpenCode напрямую, Codex через симлинки в\n'
   printf '`~/.codex/skills/`, Hermes через `skills.external_dirs`, DSH через\n'
   printf 'симлинки в `.dsh/skills/` (его роут ранга 100).\n\n'
-  printf '**Править скилл под проект — только через `ai-devcontainer skill`, не копированием:**\n'
+  printf '**Править скилл под проект — только через `adc skill`, не копированием:**\n'
   printf 'копия перекроет платформенный слой целиком и проект перестанет получать\n'
   printf 'обновления по этому скиллу.\n\n'
   printf '```bash\n'
-  printf 'ai-devcontainer skill fork <скилл> [файл…]   # взять под правку (по умолчанию SKILL.md)\n'
-  printf 'ai-devcontainer skill status                 # разошлась ли платформа под форками\n'
-  printf 'ai-devcontainer skill unfork <скилл>         # вернуться на платформенную версию\n'
-  printf 'ai-devcontainer skill sync                   # пересобрать после ai-devcontainer update\n'
+  printf 'adc skill fork <скилл> [файл…]   # взять под правку (по умолчанию SKILL.md)\n'
+  printf 'adc skill status                 # разошлась ли платформа под форками\n'
+  printf 'adc skill unfork <скилл>         # вернуться на платформенную версию\n'
+  printf 'adc skill sync                   # пересобрать после adc update\n'
   printf '```\n\n'
   printf 'Перекрыть можно любой файл, не только `SKILL.md`. Форк фиксирует базовую\n'
   printf 'версию в `.agents/skills-base/` — по ней `status` видит, что апстрим уехал.\n'

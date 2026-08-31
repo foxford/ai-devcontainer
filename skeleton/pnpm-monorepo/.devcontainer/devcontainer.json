@@ -16,7 +16,7 @@
   // curl -fsSL https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.sh | bash
   //
   // Строка намеренно НЕИЗМЕНЯЕМАЯ: всё, что делает подготовка, живёт в CLI
-  // платформы и обновляется через `ai-devcontainer update`. Раздать в проекты сам
+  // платформы и обновляется через `adc update`. Раздать в проекты сам
   // devcontainer.json нельзя (VS Code нужен настоящий файл, и он законно
   // проектный), поэтому платформенную часть свели к одному вызову — теперь она
   // меняется централизованно, не трогая проекты. Подробнее и про то, почему это
@@ -24,13 +24,19 @@
   //
   // Дубль — не опечатка: VS Code запускает initializeCommand не из login-шелла,
   // и ~/.local/bin в PATH может не оказаться. prepare идемпотентен.
-  "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare",
+  "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare",
 
   // Единственная фича: docker-in-docker (в плоском Dockerfile её аккуратно
   // не воспроизвести).
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
+
+  // host.docker.internal: Docker Desktop (macOS/WSL2) даёт его сам, на голом
+  // Docker Engine (Linux) — только с этим флагом. Нужен опциональному MCP
+  // серверу obsidian (см. README.md, раздел «Obsidian»): контейнер достаёт до
+  // плагина Local REST API на хосте, если тот у разработчика поднят.
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
 
   // Юзер зафиксирован в образе — маунты идут прямо в /home/node/*.
   // Каталоги-цели предсозданы node:node в dev-base (иначе Docker создаст
@@ -44,10 +50,10 @@
     // В образ запечён только tooling/setup.sh (нужен на этапе build).
     "source=${localEnv:HOME}/.local/share/ai-devcontainer,target=/opt/ai-devcontainer,type=bind,readonly",
 
-    // Obsidian живёт на ХОСТЕ, в контейнер прокинут его сокет — осознанное
-    // допущение: контейнер изолирован, но заметки/граф ведём в хостовом
-    // Obsidian через CLI-обёртку .devcontainer/obsidian (ставится post-create).
-    "source=/tmp/obsidian-cli.sock,target=/run/obsidian.sock,type=bind",
+    // Vault Obsidian — персист, чтобы хостовый Obsidian открывал те же файлы,
+    // что пишет graphify (--obsidian --obsidian-dir /home/node/obsidian-vault).
+    // Чисто файловая штука: живому Obsidian сокет для этого не нужен вовсе.
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/obsidian,target=/home/node/obsidian-vault,type=bind,consistency=cached",
 
     // Персист AI-тулзов и истории — PER-PROJECT (~/.ai-devcontainer-dev/MyProject/*):
     // у каждого проекта свои логины/сессии/история — параллельно открытые

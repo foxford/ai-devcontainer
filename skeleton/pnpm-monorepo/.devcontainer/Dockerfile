@@ -4,7 +4,7 @@
 #
 # Образ собирается ЛОКАЛЬНО из клона платформы (~/.local/share/ai-devcontainer):
 # initializeCommand ниже в devcontainer.json дособерёт его при необходимости.
-# Обновление окружения = ai-devcontainer update (pull платформы + пересборка).
+# Обновление окружения = adc update (pull платформы + пересборка).
 
 FROM dev-base:local
 

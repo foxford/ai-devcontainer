@@ -54,6 +54,18 @@
       "x-oauth": true,
       "type": "http",
       "url": "https://mcp.figma.com/mcp"
+    },
+
+    "obsidian": {
+      "//": "MCP-сервер плагина Obsidian Local REST API (coddingtonbear/obsidian-local-rest-api) — чтение/запись/поиск по личному vault пользователя, каким бы он ни был на хосте. Не путать с vault-маунтом проекта (README.md, раздел «Obsidian»): тот — файловый, отдельный per-project каталог для graphify --obsidian; этот — живой доступ к ЛЮБОМУ открытому в Obsidian vault'у.",
+      "//1": "ВЫКЛЮЧЕН ПО УМОЛЧАНИЮ: включается через OBSIDIAN_API_KEY в .agents/mcp.secrets.env (ключ из настроек плагина — Settings → Local REST API). Порт 27123 — незащищённый HTTP-режим плагина (включается его настройкой), проще, чем доверять самоподписанный сертификат HTTPS-порта 27124 ради трафика, который и так не выходит за пределы хоста.",
+      "//2": "host.docker.internal — тот же мост в devcontainer.json (runArgs: --add-host=host.docker.internal:host-gateway), которым он резолвится в реальный IP на голом Docker Engine (WSL2/Linux), не только на Docker Desktop.",
+      "x-requires": ["env:OBSIDIAN_API_KEY"],
+      "type": "http",
+      "url": "http://host.docker.internal:27123/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${OBSIDIAN_API_KEY}"
+      }
     }
   }
 }

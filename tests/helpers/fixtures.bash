@@ -10,7 +10,7 @@ make_repo_fixture() {
     cat > "$dir/.devcontainer/devcontainer.json" <<'EOF'
 {
   "name": "fixture",
-  "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare"
+  "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare"
 }
 EOF
   fi
@@ -36,7 +36,7 @@ EOF
   cat > "$dir/skeleton/pnpm-monorepo/.devcontainer/devcontainer.json" <<'EOF'
 {
   "name": "MyProject",
-  "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare"
+  "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare"
 }
 EOF
   echo "FROM scratch" > "$dir/skeleton/pnpm-monorepo/.devcontainer/Dockerfile"
@@ -44,7 +44,7 @@ EOF
   mkdir -p "$dir/mcp"
   echo '{"mcpServers": {}}' > "$dir/mcp/servers.json"
   mkdir -p "$dir/tooling"
-  # PLATFORM_ROOT в bin/ai-devcontainer откатывается на реальный репозиторий,
+  # PLATFORM_ROOT в bin/adc откатывается на реальный репозиторий,
   # если тут нет Dockerfile — держим фикстуру самодостаточной.
   echo "FROM debian:bookworm-slim" > "$dir/Dockerfile"
   echo "#!/usr/bin/env bash" > "$dir/tooling/setup.sh"

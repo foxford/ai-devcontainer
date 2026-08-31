@@ -5,7 +5,7 @@
 #
 # Делает:
 #   1. клонирует (или обновляет) платформу в ~/.local/share/ai-devcontainer
-#   2. кладёт CLI `ai-devcontainer` в ~/.local/bin
+#   2. кладёт CLI `adc` в ~/.local/bin
 #   3. создаёт персист-каталоги ~/.ai-devcontainer-dev/*
 #
 # Переопределения:
@@ -132,10 +132,9 @@ fi
 
 # ── 2. CLI на PATH ─────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
-ln -sfn "$DEST/bin/ai-devcontainer" "$BIN_DIR/ai-devcontainer"
-ln -sfn "$DEST/bin/ai-devcontainer" "$BIN_DIR/adc"
-chmod +x "$DEST/bin/ai-devcontainer"
-log "CLI: $BIN_DIR/ai-devcontainer (короткий алиас: adc)"
+ln -sfn "$DEST/bin/adc" "$BIN_DIR/adc"
+chmod +x "$DEST/bin/adc"
+log "CLI: $BIN_DIR/adc"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -151,9 +150,9 @@ log "Персист: ~/.ai-devcontainer-dev/<проект>/* (создаются
 echo ""
 log "Готово. Проверяю окружение:"
 echo ""
-"$BIN_DIR/ai-devcontainer" doctor || true
+"$BIN_DIR/adc" doctor || true
 
 echo ""
 log "Дальше:"
-echo "      ai-devcontainer new my-service    # завести проект"
+echo "      adc new my-service    # завести проект"
 echo "      # образ dev-base:local соберётся сам при первом Reopen in Container"

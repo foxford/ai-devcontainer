@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# tooling/skill.sh — реализация `ai-devcontainer skill`. Напрямую не зовут:
-# точка входа одна и та же на хосте и в контейнере — `ai-devcontainer skill <cmd>`.
+# tooling/skill.sh — реализация `adc skill`. Напрямую не зовут:
+# точка входа одна и та же на хосте и в контейнере — `adc skill <cmd>`.
 #
-#   ai-devcontainer skill list             — что откуда приезжает
-#   ai-devcontainer skill status           — форки и разошлась ли под ними платформа
-#   ai-devcontainer skill fork <skill> [файл…]  — взять файл(ы) платформы под правку
-#   ai-devcontainer skill unfork <skill> [файл] — вернуться на платформенную версию
-#   ai-devcontainer skill migrate          — разово: выкинуть вендоренные копии
-#   ai-devcontainer skill sync             — пересобрать .claude/skills после update
+#   adc skill list             — что откуда приезжает
+#   adc skill status           — форки и разошлась ли под ними платформа
+#   adc skill fork <skill> [файл…]  — взять файл(ы) платформы под правку
+#   adc skill unfork <skill> [файл] — вернуться на платформенную версию
+#   adc skill migrate          — разово: выкинуть вендоренные копии
+#   adc skill sync             — пересобрать .claude/skills после update
 #
 # Два слоя (см. tooling/wire-agent-skills.sh):
 #   платформа  $PLATFORM_ROOT/skills/<skill>/…      — общее, обновляется централизованно
@@ -109,7 +109,7 @@ patch_hermes() {
 }
 
 # Доки, которые теперь раздаёт платформа (см. tooling/wire-docs.sh). В проекте
-# они лежат трекаемыми копиями со времён `ai-devcontainer new` — их надо убрать,
+# они лежат трекаемыми копиями со времён `adc new` — их надо убрать,
 # иначе копия перекроет платформенную и общее правило снова перестанет доезжать.
 # Убираем ТОЛЬКО то, что совпадает с платформенным байт в байт; разошедшееся
 # оставляем проекту и говорим, где посмотреть диф.
@@ -211,9 +211,9 @@ cmd_status() {
 }
 
 cmd_fork() {
-  local name="${1:?Использование: ai-devcontainer skill fork <skill> [файл…]}"; shift || true
+  local name="${1:?Использование: adc skill fork <skill> [файл…]}"; shift || true
   local src="$PLATFORM_SKILLS/$name"
-  [ -d "$src" ] || { err "нет платформенного скилла '$name' (см. ai-devcontainer skill list)"; exit 1; }
+  [ -d "$src" ] || { err "нет платформенного скилла '$name' (см. adc skill list)"; exit 1; }
 
   local files=("$@")
   if [ "${#files[@]}" -eq 0 ]; then
@@ -241,7 +241,7 @@ cmd_fork() {
 }
 
 cmd_unfork() {
-  local name="${1:?Использование: ai-devcontainer skill unfork <skill> [файл]}"; shift || true
+  local name="${1:?Использование: adc skill unfork <skill> [файл]}"; shift || true
   local rel="${1:-}"
   if [ -n "$rel" ]; then
     rm -f "$PROJECT_SKILLS/$name/$rel" "$BASE_DIR/$name/$rel"
@@ -290,7 +290,7 @@ cmd_migrate() {
   log "миграция: выкинуто копий $dropped, оставлено форков $kept, своих скиллов $own"
   ensure_gitignore
   patch_hermes
-  [ "$kept" -gt 0 ] && dim "  проверь форки: ai-devcontainer skill status"
+  [ "$kept" -gt 0 ] && dim "  проверь форки: adc skill status"
   cmd_sync
 }
 
@@ -315,5 +315,5 @@ case "${1:-help}" in
   migrate) cmd_migrate;;
   sync)    cmd_sync;;
   help|--help|-h) sed -n '4,11p' "$0" | sed 's/^# \{0,1\}//';;
-  *) err "Неизвестная команда: $1 (см. ai-devcontainer skill help)"; exit 1;;
+  *) err "Неизвестная команда: $1 (см. adc skill help)"; exit 1;;
 esac

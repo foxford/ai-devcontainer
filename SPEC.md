@@ -10,15 +10,15 @@
 | Каталог | Что это | Как доезжает до проекта |
 |---|---|---|
 | `install.sh` | бутстрап машины: клон платформы + CLI | `curl \| bash`, один раз |
-| `bin/ai-devcontainer` | CLI: new / ensure-image / update / sync / doctor / skill / mcp / plans / prepare | симлинк в `~/.local/bin` |
+| `bin/adc` | CLI: new / ensure-image / update / sync / doctor / skill / mcp / plans / prepare | симлинк в `~/.local/bin` |
 | `Dockerfile` | образ **dev-base**: apt, rust, bun, go, zsh, юзер node, asdf | собирается **локально** → `dev-base:local` |
 | `tooling/` | скрипты: `setup.sh`, `post-create-setup.sh`, `install-ai-tools.sh`, `wire-agent-skills.sh`, `wire-mcp.sh`, helpers | в образ печётся ТОЛЬКО `setup.sh` (нужен при build); остальное **монтируется** из клона → `/opt/ai-devcontainer` |
 | `skills/` | **стоковые тех-скиллы** (24 шт.), общие для всех проектов | НЕ копируются: подмешиваются overlay'ем из `/opt/ai-devcontainer/skills` |
 | `mcp/` | **стоковые MCP-серверы** (`servers.json`): `playwright`, `chrome-devtools`, `figma` | НЕ копируются: раздаются overlay'ем сразу в Claude, Codex, Hermes и DSH; лишнее отсекается по `x-requires` |
 | `docs/` | **платформенные доки проекта**: `AGENTS.platform.md` (контракт для агентов), `MONOREPO.md`, README слоя скиллов, README каталога планов, образец `mcp.secrets.env` | НЕ копируются: раскладываются симлинками из клона платформы |
-| `skeleton/<type>/` | **реестр скаффолдов** — каждый подкаталог отдельный тип проекта со своим `.scaffold.json` (label + правила подстановки имени). Сейчас один тип — `pnpm-monorepo`: Nx + pnpm catalogs + changesets, пакеты `@foxford/*`, Hermes-обвязка (`.hermes`), тонкий `.devcontainer`, тонкий `AGENTS.md` (только проектное) | копируется при `ai-devcontainer new --type <t>` (без флага — спросит, если типов больше одного) |
+| `skeleton/<type>/` | **реестр скаффолдов** — каждый подкаталог отдельный тип проекта со своим `.scaffold.json` (label + правила подстановки имени). Сейчас один тип — `pnpm-monorepo`: Nx + pnpm catalogs + changesets, пакеты `@foxford/*`, Hermes-обвязка (`.hermes`), тонкий `.devcontainer`, тонкий `AGENTS.md` (только проектное) | копируется при `adc new --type <t>` (без флага — спросит, если типов больше одного) |
 | `skeleton/pnpm-monorepo/packages/` | `eslint-config` · `prettier-config` · `typescript-config` · `vitest-config` · `automation` (Nx-генератор) · `hermes-process` (state-machine) | **копией**, как workspace-пакеты нового проекта |
-| `tests/` | bats-тесты на `tooling/*.sh` + `bin/ai-devcontainer` (PATH-моки внешних CLI, фикстурные деревья — без реальных docker/git/npm сайд-эффектов); `tests/bats/lib/` — bats-core/-support/-assert, git submodules | `bash tests/run.sh`; CI — `.github/workflows/test.yml` на каждый push/PR |
+| `tests/` | bats-тесты на `tooling/*.sh` + `bin/adc` (PATH-моки внешних CLI, фикстурные деревья — без реальных docker/git/npm сайд-эффектов); `tests/bats/lib/` — bats-core/-support/-assert, git submodules | `bash tests/run.sh`; CI — `.github/workflows/test.yml` на каждый push/PR |
 
 ## Принципы
 
@@ -30,7 +30,7 @@
 - **скиллы — наоборот, overlay**: стоковые живут в платформе и обновляются
   централизованно, проект держит только свои отличия (см. README, «Скиллы»);
 - **конфиг девконтейнера — тонкий, в проекте**; всё хостовое он делает одним
-  неизменяемым вызовом `initializeCommand: ai-devcontainer prepare`, поэтому сам
+  неизменяемым вызовом `initializeCommand: adc prepare`, поэтому сам
   шаг обновляется централизованно (см. «Как это устроено» ниже).
 
 ## Что происходит на первом postCreate
@@ -42,7 +42,7 @@
 3. helpers → `~/.local/bin` (`pnpm-patch-dep`, `graphify-view`, …);
 4. AI-тулзы в `/opt/ai-tools` (claude / opencode / codex / hermes / graphify);
 5. `graphify update .` — код-граф проекта (локально, не в репо);
-6. `ai-devcontainer sync` — та же команда, что набирают руками: скиллы и доки в `.claude/skills` + `AGENTS.skills.md`, MCP в `.mcp.json`/`~/.codex/config.toml`/`~/.hermes/config.yaml`, `.gitignore`, отметка применённой ревизии;
+6. `adc sync` — та же команда, что набирают руками: скиллы и доки в `.claude/skills` + `AGENTS.skills.md`, MCP в `.mcp.json`/`~/.codex/config.toml`/`~/.hermes/config.yaml`, `.gitignore`, отметка применённой ревизии;
 7. `playwright install chromium` — браузеры в named volume (для раннера проекта и для браузерного MCP; не блокирует);
 8. `.hermes/bootstrap.sh` — роли, kanban, state-machine (если hermes авторизован).
 
@@ -50,13 +50,13 @@
 
 | Что | Как обновляется |
 |---|---|
-| Тулчейн (образ) | `ai-devcontainer update` → Rebuild Container в проекте |
-| **Скиллы во всех проектах** | `ai-devcontainer update` на хосте + `ai-devcontainer sync` в проекте (или Rebuild). Форки проекта не затираются |
+| Тулчейн (образ) | `adc update` → Rebuild Container в проекте |
+| **Скиллы во всех проектах** | `adc update` на хосте + `adc sync` в проекте (или Rebuild). Форки проекта не затираются |
 | Конфиг-пакеты в **новых** проектах | сами: новый проект получает свежую копию |
 | Конфиг-пакеты в **существующих** проектах | вручную: конфиги — копия, а не зависимость; перенести диф из `skeleton/pnpm-monorepo/packages/*` (осознанный размен: свобода правок в проекте против автообновлений) |
-| **Доки для агентов во всех проектах** | `ai-devcontainer update` — `AGENTS.platform.md`/`MONOREPO.md` симлинки на платформу, правка видна сразу |
-| **MCP-серверы во всех проектах** | тем же `ai-devcontainer sync`; агента после этого перезапустить, конфиг он читает на старте |
-| **Правила для агентов (планы, контракт)** | `ai-devcontainer update` — доки симлинки, правка видна сразу; `ai-devcontainer sync` доложит, что приехало |
+| **Доки для агентов во всех проектах** | `adc update` — `AGENTS.platform.md`/`MONOREPO.md` симлинки на платформу, правка видна сразу |
+| **MCP-серверы во всех проектах** | тем же `adc sync`; агента после этого перезапустить, конфиг он читает на старте |
+| **Правила для агентов (планы, контракт)** | `adc update` — доки симлинки, правка видна сразу; `adc sync` доложит, что приехало |
 | `.hermes` в существующих проектах | не перезаписывается (seed только при отсутствии); обновлять руками при желании |
 
 ## Как это устроено (решения и их причины)
@@ -65,9 +65,14 @@
   клона платформы; актуальность отслеживается label'ом с хешем Dockerfile+setup.sh —
   пересборка только когда меняется сам тулчейн. Ноль инфраструктуры
   (registry, docker login, CI-публикации), обновления — по желанию пользователя.
-- **Obsidian на хосте, мост через сокет** — осознанное допущение: контейнер
-  изолирован, но заметки/граф ведутся в хостовом Obsidian; CLI-обёртка живёт
-  в проекте (`.devcontainer/obsidian`), сокет прокинут маунтом.
+- **Obsidian на хосте, два независимых канала** — контейнер изолирован, но
+  заметки ведутся в хостовом Obsidian. Файловый: vault-персист
+  (`obsidian-vault`-маунт) для `graphify --obsidian`, работает без всякой
+  настройки. Живой: MCP-сервер плагина Local REST API через
+  `host.docker.internal` — не собственный протокол, готовый и поддерживаемый
+  плагин; см. `README.md, раздел «Obsidian»`. Раньше здесь был кастомный демон на
+  unix-сокете (`.devcontainer/obsidian`) — заменён, когда нашёлся плагин,
+  делающий то же самое, но без самодельного протокола на нашей стороне.
 - **debian-slim + asdf, а не node-образ**: `.tool-versions` — единственный
   источник версии ноды (контейнер и хост); node-образ нёс вторую ноду и corepack
   в root-овском `/usr/local/bin` → EACCES при `corepack enable` от юзера.
@@ -108,14 +113,14 @@
   ответил) и коннектится к серверу прямо при добавлении — в postCreate без TTY
   это гарантированный висяк.
 - **skeleton — живая монорепа**: CI платформы гоняет lint+test прямо в ней,
-  так что шаблон не может «протухнуть» незаметно. `ai-devcontainer new` копирует
+  так что шаблон не может «протухнуть» незаметно. `adc new` копирует
   через rsync, исключая рабочие артефакты (node_modules, .nx, build).
 - **Персист PER-PROJECT** (`~/.ai-devcontainer-dev/<проект>/*`): у каждого проекта
   свои логины/сессии Claude/Codex/Hermes/DSH и история шелла — параллельно открытые
   контейнеры не дерутся за `~/.claude.json` и hermes-конфиги; каталоги создаёт
   `initializeCommand` проекта на хосте (иначе docker создал бы их от root).
 - **Платформенная часть devcontainer.json — один неизменяемый вызов**
-  (`ai-devcontainer prepare`), а не раздаваемый файл: VS Code нужен настоящий файл
+  (`adc prepare`), а не раздаваемый файл: VS Code нужен настоящий файл
   на хосте, и он законно проектный. Логика хостового шага живёт в CLI и
   обновляется вместе с платформой, конфиг проекта при этом не трогается.
   Почему это не devcontainer Feature (спойлер: `${localEnv:HOME}` в её маунтах

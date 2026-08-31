@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# bin/ai-devcontainer — cmd_ensure_image / cmd_update / host_only.
+# bin/adc — cmd_ensure_image / cmd_update / host_only.
 
 setup() {
   load '../bats/lib/bats-support/load'
@@ -7,7 +7,7 @@ setup() {
   load '../helpers/fixtures'
   load '../helpers/mocks'
 
-  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/ai-devcontainer"
+  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/adc"
   PLATFORM_FIXTURE="$(make_platform_fixture)"
   mocks_init
 }

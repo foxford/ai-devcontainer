@@ -26,9 +26,9 @@ echo "            graphify-label-paths      осмысленные имена с
 echo "            graphify export obsidian  выгрузить как Obsidian-vault"
 echo "            /graphify --update        обновить через AI-агента (имена + доки)"
 echo "            pnpm nx graph             граф зависимостей пакетов (Nx)"
-echo "  🛠  Платформа ai-devcontainer sync      применить к проекту + что приехало"
+echo "  🛠  Платформа adc sync      применить к проекту + что приехало"
 echo "               ... doctor            сверить окружение и devcontainer"
-echo "  🧩 Скиллы ai-devcontainer skill list   что откуда приезжает"
+echo "  🧩 Скиллы adc skill list   что откуда приезжает"
 echo "            ... fork <скилл> [файл]   править скилл под проект"
 echo "            ... status                разошлась ли платформа под форками"
 echo "  🔧 Утилиты pnpm-patch-dep · git"
@@ -49,7 +49,7 @@ done
 
 # Платформа уехала вперёд проекта — сказать об этом. Иначе о новых скиллах,
 # доках и правилах узнать неоткуда: они лежат в клоне платформы и ждут sync,
-# никак себя не проявляя. Отметку кладёт `ai-devcontainer sync`.
+# никак себя не проявляя. Отметку кладёт `adc sync`.
 REPO="${REPO_ROOT:-$PWD}"
 while [ "$REPO" != "/" ] && [ ! -d "$REPO/.git" ] && [ ! -d "$REPO/.devcontainer" ]; do
   REPO="$(dirname "$REPO")"
@@ -62,7 +62,7 @@ if [ -f "$REPO/.claude/.platform-rev" ] && [ -d "$PLAT/.git" ]; then
     N="$(git -C "$PLAT" rev-list --count "$APPLIED..$CURRENT" 2>/dev/null)"
     echo ""
     echo "  ⬆️  Платформа уехала вперёд на ${N:-?} коммит(ов) — что приехало и применить:"
-    echo "      ai-devcontainer sync"
+    echo "      adc sync"
   fi
 fi
 

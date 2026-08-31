@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# bin/ai-devcontainer — list_scaffold_types / pick_scaffold_type /
+# bin/adc — list_scaffold_types / pick_scaffold_type /
 # apply_scaffold_rename / cmd_new.
 
 setup() {
@@ -7,7 +7,7 @@ setup() {
   load '../bats/lib/bats-assert/load'
   load '../helpers/fixtures'
 
-  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/ai-devcontainer"
+  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/adc"
   PLATFORM_FIXTURE="$(make_platform_fixture)"
   DEST_DIR="$(mktemp -d)/newproj"
 }

@@ -12,7 +12,7 @@
 #   3. helpers → ~/.local/bin        ─ pnpm-patch-dep и т.д.
 #   4. install-ai-tools.sh           ─ claude, opencode, codex, hermes, dsh, graphify
 #   5. graphify update .             ─ граф проекта (локально в graphify-out/)
-#   6. ai-devcontainer sync             ─ скиллы, доки и MCP платформы → проект
+#   6. adc sync             ─ скиллы, доки и MCP платформы → проект
 #   7. playwright install            ─ браузеры в volume (раннер проекта и/или MCP)
 #   8. .hermes/bootstrap.sh          ─ профайлы, hooks
 #
@@ -74,10 +74,9 @@ mkdir -p "$BIN_DIR"
 # CLI платформы — той же командой, что и на хосте. Внутри контейнера из него
 # работают project-скоупные вещи (sync, skill, doctor, update→sync); new и
 # ensure-image упрутся в read-only маунт и скажут об этом явно.
-if [ -f "$PLATFORM_DIR/bin/ai-devcontainer" ]; then
-  ln -sfn "$PLATFORM_DIR/bin/ai-devcontainer" "$BIN_DIR/ai-devcontainer"
-  ln -sfn "$PLATFORM_DIR/bin/ai-devcontainer" "$BIN_DIR/adc"
-  log "  → ai-devcontainer (CLI платформы, короткий алиас: adc)"
+if [ -f "$PLATFORM_DIR/bin/adc" ]; then
+  ln -sfn "$PLATFORM_DIR/bin/adc" "$BIN_DIR/adc"
+  log "  → adc (CLI платформы)"
 fi
 
 if [ -d "$TOOLING_DIR/helpers" ]; then
@@ -96,13 +95,6 @@ fi
 if [ -x "$BIN_DIR/claude-snapshot" ]; then
   "$BIN_DIR/claude-snapshot" retention || true
   "$BIN_DIR/claude-snapshot" snapshot || true
-fi
-
-# Проектные CLI-обёртки (например .devcontainer/obsidian — мост к Obsidian
-# на хосте через /run/obsidian.sock; осознанное допущение проекта).
-if [ -f "$PROJECT_ROOT/.devcontainer/obsidian" ]; then
-  install -m 0755 "$PROJECT_ROOT/.devcontainer/obsidian" "$BIN_DIR/obsidian"
-  log "  → obsidian (из .devcontainer проекта)"
 fi
 
 # ── 4. AI tools ────────────────────────────────────────────────
@@ -140,8 +132,8 @@ fi
 # ставит отметку применённой ревизии, по которой motd потом видит, что
 # платформа уехала вперёд.
 # Зовём по абсолютному пути: ~/.local/bin в PATH этого шелла может не быть.
-log "[6/8] Платформа → проект: скиллы, доки, MCP (ai-devcontainer sync)"
-bash "$PLATFORM_DIR/bin/ai-devcontainer" sync || warn "ai-devcontainer sync failed (не блокирует)"
+log "[6/8] Платформа → проект: скиллы, доки, MCP (adc sync)"
+bash "$PLATFORM_DIR/bin/adc" sync || warn "adc sync failed (не блокирует)"
 
 # ── 7. Браузеры Playwright ─────────────────────────────────────
 # Ставим В VOLUME ($PLAYWRIGHT_BROWSERS_PATH, задан в образе), а не в образ:

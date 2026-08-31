@@ -13,5 +13,5 @@ jobs:
         with:
           submodules: recursive
 
-      - name: bats-тесты tooling/*.sh + bin/ai-devcontainer
+      - name: bats-тесты tooling/*.sh + bin/adc
         run: bash tests/run.sh

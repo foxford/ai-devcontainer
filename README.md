@@ -60,8 +60,7 @@ code .
 
 ## CLI
 
-Полное имя команды — `ai-devcontainer`, короткий алиас — `adc` (оба ставит
-`install.sh`, работают одинаково; в примерах ниже — алиас).
+Команда — `adc` (ставит `install.sh`).
 
 | Команда | Что делает |
 |---|---|
@@ -151,3 +150,35 @@ adc mcp sync    # пересобрать (после adc update или прав�
 Playwright: это отдельный процесс, его гоняет CI. MCP — инструмент для агента,
 чтобы исследовать живое приложение вручную. Если оба используют Playwright,
 браузеры ставятся в общий named volume и переживают rebuild.
+
+## Obsidian
+
+Два независимых канала. Когда агенту использовать какой — скилл `obsidian`.
+
+**Vault-каталог** — работает сразу, без настройки. В каждом проекте есть
+маунт `obsidian-vault` (`~/.ai-devcontainer-dev/<проект>/obsidian`
+на хосте):
+
+```bash
+graphify update . --obsidian --obsidian-dir /home/node/obsidian-vault
+```
+
+Открой `~/.ai-devcontainer-dev/<проект>/obsidian` как vault в хостовом
+Obsidian — файлы появляются сразу, персист переживает rebuild.
+
+**MCP-сервер `obsidian`** — живой доступ агента к тому vault'у, что реально
+открыт в Obsidian на хосте (не обязательно к каталогу выше). Настройка,
+один раз:
+
+1. Установи плагин [**Local REST API**](https://community.obsidian.md/plugins/obsidian-local-rest-api)
+   через Community Plugins в Obsidian.
+2. В его настройках включи **Enable Non-encrypted (HTTP) Server** (порт
+   `27123`) — так проще, чем доверять самоподписанный сертификат
+   HTTPS-порта, а трафик и так не выходит за пределы хоста.
+3. Скопируй **API Key** из тех же настроек.
+4. В `.agents/mcp.secrets.env` проекта: `OBSIDIAN_API_KEY=<ключ>`.
+5. `adc mcp sync`, перезапусти агента.
+
+Без ключа сервер молча не раздаётся (та же схема, что у `figma`). Полный
+список инструментов (`vault_read`/`vault_write`/`search_simple`/`tag_list`/...)
+— в скилле `obsidian`.

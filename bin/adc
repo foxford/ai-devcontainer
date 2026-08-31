@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# ai-devcontainer — CLI платформы. Ставится install.sh в ~/.local/bin.
+# adc — CLI платформы. Ставится install.sh в ~/.local/bin.
 #
 # Команды:
-#   ai-devcontainer new <name> [dir] [--type <t>]
+#   adc new <name> [dir] [--type <t>]
 #                                      — новый проект из skeleton; без --type
 #                                        спросит тип, если их несколько
-#   ai-devcontainer ensure-image      — собрать dev-base:local, если нет/устарел
-#   ai-devcontainer update            — на хосте: git pull платформы + пересборка
+#   adc ensure-image      — собрать dev-base:local, если нет/устарел
+#   adc update            — на хосте: git pull платформы + пересборка
 #                                        образа; в контейнере: то же, что sync
-#   ai-devcontainer sync [--adopt] [--type <t>]
+#   adc sync [--adopt] [--type <t>]
 #                                      — применить платформу к проекту: скиллы,
 #                                        доки, MCP, .gitignore + показать, что
 #                                        приехало с прошлого раза. --adopt
 #                                        заводит .devcontainer/ в репозитории,
 #                                        который платформой ещё не управлялся
-#   ai-devcontainer doctor            — проверить окружение машины; из каталога
+#   adc doctor            — проверить окружение машины; из каталога
 #                                        проекта — ещё и его devcontainer.json
-#   ai-devcontainer skill <cmd>       — скиллы проекта: list / status / fork /
+#   adc skill <cmd>       — скиллы проекта: list / status / fork /
 #                                        unfork / migrate / sync
-#   ai-devcontainer mcp <list|sync>   — MCP-серверы проекта: показать / пересобрать
-#   ai-devcontainer plans [--all]     — задачи проекта: что в работе, что залежалось
-#   ai-devcontainer prepare           — хостовая подготовка проекта; её зовёт
+#   adc mcp <list|sync>   — MCP-серверы проекта: показать / пересобрать
+#   adc plans [--all]     — задачи проекта: что в работе, что залежалось
+#   adc prepare           — хостовая подготовка проекта; её зовёт
 #                                        initializeCommand, руками не нужна
 #
 # Платформа живёт в $AI_DEVCONTAINER_HOME (default ~/.local/share/ai-devcontainer).
@@ -71,7 +71,7 @@ REV_STAMP=".claude/.platform-rev"
 host_only() {
   [ -w "$PLATFORM_ROOT" ] && return 0
   err "«$1» доступна только на хосте: $PLATFORM_ROOT примонтирован read-only."
-  echo "    ${2:-Выполни на хосте, затем в контейнере: ai-devcontainer skill sync}" >&2
+  echo "    ${2:-Выполни на хосте, затем в контейнере: adc skill sync}" >&2
   exit 1
 }
 
@@ -168,7 +168,7 @@ cmd_new() {
       *) positional+=("$1"); shift ;;
     esac
   done
-  local NAME="${positional[0]:?Использование: ai-devcontainer new <name> [dir] [--type <type>]}"
+  local NAME="${positional[0]:?Использование: adc new <name> [dir] [--type <type>]}"
   local DEST="${positional[1]:-$PWD/$NAME}"
 
   TYPE="$(pick_scaffold_type "$TYPE")"
@@ -245,7 +245,7 @@ cmd_update() {
   fi
   cmd_ensure_image
   log "Платформа на rev $(platform_rev). Что дальше:"
-  echo "      • в каждом проекте — ai-devcontainer sync (скиллы, доки, MCP,"
+  echo "      • в каждом проекте — adc sync (скиллы, доки, MCP,"
   echo "        планы; покажет, что именно приехало). Форки не затираются."
   echo "      • окружение — Rebuild Container (возьмёт свежий dev-base:local)"
   echo "      • конфиг-пакеты — перенос дифа из skeleton/packages/* руками"
@@ -268,7 +268,7 @@ cmd_update() {
 is_unmanaged_repo() {
   local root="$1" dc="$root/.devcontainer/devcontainer.json"
   [ -f "$dc" ] || return 0
-  grep -v '^[[:space:]]*//' "$dc" 2>/dev/null | grep -qF "ai-devcontainer prepare" && return 1
+  grep -v '^[[:space:]]*//' "$dc" 2>/dev/null | grep -qF "adc prepare" && return 1
   return 0
 }
 
@@ -325,7 +325,7 @@ cmd_sync() {
     cmd_adopt_devcontainer "$root" "$type_arg"
   elif is_unmanaged_repo "$root"; then
     warn "этот репозиторий не заведён под платформу (нет .devcontainer/devcontainer.json с вызовом prepare)"
-    echo "    Заведи его: ai-devcontainer sync --adopt" >&2
+    echo "    Заведи его: adc sync --adopt" >&2
     echo "    Ниже всё равно разложу скиллы/доки/MCP — они не зависят от devcontainer'а." >&2
     echo >&2
   fi
@@ -365,7 +365,7 @@ cmd_sync() {
 # Скиллы проекта. Прокидываем корни: платформа известна нам, проект — это $PWD.
 cmd_skill() {
   local helper="$PLATFORM_ROOT/tooling/skill.sh"
-  [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
   AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$PWD" bash "$helper" "$@"
 }
 
@@ -375,7 +375,7 @@ cmd_mcp() {
   local helper="$PLATFORM_ROOT/tooling/wire-mcp.sh"
   case "${1:-list}" in
     sync)
-      [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+      [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
       REPO_ROOT="$PWD" bash "$helper"
       echo "    Перезапусти агента (claude / codex / hermes / dsh), чтобы он подхватил серверы." ;;
     list)
@@ -390,12 +390,12 @@ cmd_mcp() {
                  (if .value.url
                   then (.value.url | sub("(?<p>[?&](access_token|token|api_key)=)[^&]+"; "\(.p)***")) + "  [http]"
                   else .value.command + " " + ((.value.args // []) | join(" ")) end)' "$PWD/.mcp.json"
-        echo "    (что НЕ роздано и почему — покажет ai-devcontainer mcp sync;"
+        echo "    (что НЕ роздано и почему — покажет adc mcp sync;"
         echo "     OAuth-серверам вроде figma нужен разовый ручной логин — см. AGENTS.platform.md)"
       else
-        echo "роздано:    нечего показать (нет .mcp.json — запусти ai-devcontainer mcp sync)"
+        echo "роздано:    нечего показать (нет .mcp.json — запусти adc mcp sync)"
       fi ;;
-    *) err "Использование: ai-devcontainer mcp <list|sync>"; exit 1 ;;
+    *) err "Использование: adc mcp <list|sync>"; exit 1 ;;
   esac
 }
 
@@ -404,7 +404,7 @@ cmd_mcp() {
 # статус живёт только во фронтматтере — значит обзор обязан быть запросом.
 cmd_plans() {
   local helper="$PLATFORM_ROOT/tooling/plans.sh"
-  [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
   REPO_ROOT="$(repo_root)" bash "$helper" "$@"
 }
 
@@ -453,11 +453,11 @@ check_project_devcontainer() {
   # initializeCommand: ждём вызов prepare. Старая форма (развёрнутый mkdir +
   # ensure-image) работает, но вморожена в проект — платформа не сможет
   # поправить хостовый шаг, не обойдя все репозитории руками.
-  if has "ai-devcontainer prepare"; then
+  if has "adc prepare"; then
     :
   elif has "ensure-image"; then
     miss=1; warn "  initializeCommand старой формы: логика хостового шага вморожена в проект и обновлений не получит"
-    echo '      "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare"' >&2
+    echo '      "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare"' >&2
     echo "      Персист по историческому пути не потеряется: prepare --persist ~/.<проект>-dev" >&2
   else
     miss=1; warn "  в initializeCommand нет ни prepare, ни ensure-image → dev-base:local может не оказаться собран к FROM"
@@ -507,7 +507,7 @@ check_project_devcontainer() {
 # вмороженная в файл, который платформа не может обновить: раздать
 # devcontainer.json нельзя (VS Code нужен настоящий файл, и он законно
 # проектный — имя, маунты, порты). Стало — одна строка, которая не меняется
-# никогда, а вся логика живёт здесь и приезжает обычным `ai-devcontainer update`.
+# никогда, а вся логика живёт здесь и приезжает обычным `adc update`.
 # Свести платформенную часть конфига к неизменяемому вызову оказалось дешевле,
 # чем научиться раздавать сам конфиг.
 #
@@ -529,7 +529,7 @@ cmd_prepare() {
     case "$1" in
       --name)    name="${2:?--name требует значения}"; shift 2;;
       --persist) persist="${2:?--persist требует значения}"; shift 2;;
-      *) err "prepare: неизвестный аргумент «$1» (см. ai-devcontainer help)"; exit 1;;
+      *) err "prepare: неизвестный аргумент «$1» (см. adc help)"; exit 1;;
     esac
   done
   # 1. Персист-каталоги. Создаём МЫ, а не docker: docker создал бы недостающих
@@ -560,7 +560,7 @@ cmd_prepare() {
   fi
   # Якоря нет (конфига нет либо он непривычной формы) — соглашение об именах.
   [ -n "$persist" ] || persist="$HOME/.ai-devcontainer-dev/$name"
-  for d in claude opencode codex hermes dsh uv history; do
+  for d in claude opencode codex hermes dsh uv history obsidian; do
     mkdir -p "$persist/$d"
   done
 
@@ -595,10 +595,10 @@ cmd_doctor() {
   # Хост от контейнера отличаем писабельностью клона, как в host_only.
   if [ -w "$PLATFORM_ROOT" ]; then
     command -v docker >/dev/null 2>&1 && echo "docker:     $(docker --version | cut -d, -f1)" || { echo "docker:     НЕТ — нужен для devcontainer"; ok=0; }
-    docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 && echo "образ:      $IMAGE_TAG есть (key $(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null), нужен $(image_key))" || echo "образ:      нет (соберётся при первом контейнере или: ai-devcontainer ensure-image)"
+    docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 && echo "образ:      $IMAGE_TAG есть (key $(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null), нужен $(image_key))" || echo "образ:      нет (соберётся при первом контейнере или: adc ensure-image)"
     if [ -d "$HOME/.ai-devcontainer-dev" ]; then
       local n; n="$(find "$HOME/.ai-devcontainer-dev" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
-      echo "персист:    ~/.ai-devcontainer-dev есть (проектов: $n; каталоги per-project, создаёт ai-devcontainer prepare)"
+      echo "персист:    ~/.ai-devcontainer-dev есть (проектов: $n; каталоги per-project, создаёт adc prepare)"
     else
       echo "персист:    ~/.ai-devcontainer-dev нет (создастся при первом проекте)"
     fi
@@ -607,17 +607,17 @@ cmd_doctor() {
     echo "персист:    проверяется только на хосте (~/.ai-devcontainer-dev — хостовый путь)"
   fi
   if [ -d "$PLATFORM_ROOT/skills" ]; then
-    echo "скиллы:     $(find "$PLATFORM_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) на платформе (проектные форки: ai-devcontainer skill status)"
+    echo "скиллы:     $(find "$PLATFORM_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) на платформе (проектные форки: adc skill status)"
   else
     echo "скиллы:     НЕТ $PLATFORM_ROOT/skills — платформа не обновлена?"; ok=0
   fi
   if [ -f "$PLATFORM_ROOT/mcp/servers.json" ] && command -v jq >/dev/null 2>&1; then
-    echo "MCP:        $(jq -r '.mcpServers | length' "$PLATFORM_ROOT/mcp/servers.json") сервер(ов) на платформе (роздано в проекте: ai-devcontainer mcp list)"
+    echo "MCP:        $(jq -r '.mcpServers | length' "$PLATFORM_ROOT/mcp/servers.json") сервер(ов) на платформе (роздано в проекте: adc mcp list)"
   else
     echo "MCP:        нет $PLATFORM_ROOT/mcp/servers.json — платформа не обновлена?"
   fi
   if [ -d "$PLATFORM_ROOT/skeleton" ]; then
-    echo "скаффолды:  $(list_scaffold_types | paste -sd, -) (ai-devcontainer new --type <тип>)"
+    echo "скаффолды:  $(list_scaffold_types | paste -sd, -) (adc new --type <тип>)"
   else
     echo "скаффолды:  НЕТ $PLATFORM_ROOT/skeleton — платформа не обновлена?"; ok=0
   fi
@@ -638,5 +638,5 @@ case "${1:-help}" in
   prepare)      shift; cmd_prepare "$@";;
   help|--help|-h)
     sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//';;
-  *) err "Неизвестная команда: $1 (см. ai-devcontainer help)"; exit 1;;
+  *) err "Неизвестная команда: $1 (см. adc help)"; exit 1;;
 esac

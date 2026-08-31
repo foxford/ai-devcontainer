@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# bin/ai-devcontainer — cmd_sync / cmd_adopt_devcontainer / is_unmanaged_repo /
+# bin/adc — cmd_sync / cmd_adopt_devcontainer / is_unmanaged_repo /
 # guess_scaffold_type. sub-скрипты (skill.sh, wire-mcp.sh) — заглушки, они
 # протестированы отдельно.
 
@@ -8,7 +8,7 @@ setup() {
   load '../bats/lib/bats-assert/load'
   load '../helpers/fixtures'
 
-  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/ai-devcontainer"
+  BIN="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/bin/adc"
   PLATFORM_FIXTURE="$(make_platform_fixture)"
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/skill.sh"
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/wire-mcp.sh"
@@ -44,7 +44,7 @@ run_sync() {
 
 @test "sync: devcontainer.json с вызовом prepare — managed, без предупреждения" {
   mkdir -p "$REPO_DIR/.devcontainer"
-  echo '{"initializeCommand": "ai-devcontainer prepare"}' > "$REPO_DIR/.devcontainer/devcontainer.json"
+  echo '{"initializeCommand": "adc prepare"}' > "$REPO_DIR/.devcontainer/devcontainer.json"
   run_sync
   assert_success
   refute_output --partial "не заведён под платформу"

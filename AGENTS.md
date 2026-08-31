@@ -13,9 +13,9 @@
 | `mcp/` | **стоковые MCP-серверы платформы** (`servers.json`) — раздаются тем же overlay'ем на Claude + Codex + Hermes + DSH |
 | `docs/` | **платформенные доки проекта**: `AGENTS.platform.md` (контракт для агентов), `MONOREPO.md`, README слоя скиллов, README каталога планов, образец секретов MCP — раздаются симлинками. Раздаётся не всё: список в `tooling/wire-docs.sh`, остальное (`devcontainer-delivery.md`) — про устройство самой платформы |
 | `skeleton/<type>/` | **реестр скаффолдов** — источник правды о проекте каждого типа: `.scaffold.json` (label + подстановка имени) плюс сам шаблон. Сейчас один тип, `pnpm-monorepo/`: монорепа (Nx+pnpm), пакеты `@foxford/*`, `.hermes`; `.agents/skills` в нём пустой — под проектные форки |
-| `bin/ai-devcontainer` | CLI: new / ensure-image / update / doctor / skill / mcp / plans |
+| `bin/adc` | CLI: new / ensure-image / update / doctor / skill / mcp / plans |
 | `install.sh` | бутстрап машины разработчика (`curl \| bash`) |
-| `tests/` | bats-тесты на `tooling/*.sh` + `bin/ai-devcontainer`; `tests/bats/lib/` — сами фреймворки (bats-core/-support/-assert, git submodules), не трогать руками |
+| `tests/` | bats-тесты на `tooling/*.sh` + `bin/adc`; `tests/bats/lib/` — сами фреймворки (bats-core/-support/-assert, git submodules), не трогать руками |
 
 ## Quality gates (обязательны перед завершением задачи)
 
@@ -30,11 +30,11 @@ cd skeleton/pnpm-monorepo && pnpm run e2e:type-check && pnpm run e2e
 
 Менял `Dockerfile`/`tooling/setup.sh` → дополнительно:
 ```bash
-AI_DEVCONTAINER_HOME="$PWD" bash bin/ai-devcontainer ensure-image   # образ собирается
-ai-devcontainer new smoke /tmp/smoke && rm -rf /tmp/smoke        # скелет генерится
+AI_DEVCONTAINER_HOME="$PWD" bash bin/adc ensure-image   # образ собирается
+adc new smoke /tmp/smoke && rm -rf /tmp/smoke        # скелет генерится
 ```
 
-Менял что-то в `tooling/*.sh` или `bin/ai-devcontainer` → обязательно:
+Менял что-то в `tooling/*.sh` или `bin/adc` → обязательно:
 ```bash
 bash tests/run.sh   # весь bats-набор; для одного файла — bash tests/run.sh tests/<каталог>/
 ```
@@ -46,7 +46,7 @@ bash tests/run.sh   # весь bats-набор; для одного файла �
   проектного вне skeleton не заводить. Исключение по замыслу — `skills/` и
   `mcp/`: они принадлежат платформе, а не проекту, и в проект не копируются.
 - Стоковый скилл правится в `skills/` — это меняет его во всех проектах разом.
-  Проектная правка живёт в самом проекте (`ai-devcontainer skill fork`), сюда не тащится.
+  Проектная правка живёт в самом проекте (`adc skill fork`), сюда не тащится.
 - Общее правило для агентов — в `docs/AGENTS.platform.md`, а не в `skeleton/AGENTS.md`:
   первый раздаётся всем проектам, второй остаётся у проекта под его специфику.
 - Не добавлять зависимости без явного разрешения пользователя.
@@ -70,7 +70,7 @@ bash tests/run.sh   # весь bats-набор; для одного файла �
 иначе Node резолвил бы `import` от реального пути и молча игнорировал форк.
 
 Перекрыть можно любой файл, не только `SKILL.md`. Работа с форками — одной
-командой и на хосте, и в контейнере: `ai-devcontainer skill <list|status|fork
+командой и на хосте, и в контейнере: `adc skill <list|status|fork
 &lt;skill&gt; [файл…]|unfork|migrate|sync>`. Реализация — `tooling/skill.sh`.
 Базовая версия форкнутого файла лежит в `<repo>/.agents/skills-base/` — по ней
 `status` показывает, что платформа уехала.
@@ -193,7 +193,7 @@ OAuth-сервер туда автоматически не добавляетс
 
 Цена — Codex: заголовки он умеет только ключом `http_headers` в `config.toml`,
 а `codex mcp add` их не выставляет. В Codex его вписывают руками,
-готовый блок печатает `ai-devcontainer mcp sync`. Запись от прошлой раздачи (без
+готовый блок печатает `adc mcp sync`. Запись от прошлой раздачи (без
 заголовков — она бы не заработала) wire-mcp при этом снимает сам, а вписанную
 руками отличает по наличию `http_headers` и не трогает.
 

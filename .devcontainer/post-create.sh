@@ -21,7 +21,7 @@ log "[1/5] pnpm install (skeleton — рабочая монорепа)"
 log "[2/5] CLI + хелперы + obsidian → ~/.local/bin"
 mkdir -p "$HOME/.local/bin"
 # та же команда, что на хосте; здесь корень платформы — рабочая копия
-ln -sfn "$PWD/bin/ai-devcontainer" "$HOME/.local/bin/ai-devcontainer"
+ln -sfn "$PWD/bin/adc" "$HOME/.local/bin/adc"
 for helper in tooling/helpers/*.sh; do
   install -m 0755 "$helper" "$HOME/.local/bin/$(basename "$helper" .sh)"
 done

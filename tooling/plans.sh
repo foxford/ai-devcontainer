@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tooling/plans.sh — реализация `ai-devcontainer plans`: обзор задач проекта.
+# tooling/plans.sh — реализация `adc plans`: обзор задач проекта.
 # Напрямую не зовут: точка входа одна и та же на хосте и в контейнере.
 #
 # Зачем команда вообще. Раньше «что в работе» читалось прямо из дерева: закрытая
@@ -43,7 +43,7 @@ SHOW_ALL=0
 case "${1:-}" in
   --all|-a) SHOW_ALL=1 ;;
   "")       ;;
-  *)        err "Использование: ai-devcontainer plans [--all]"; exit 1 ;;
+  *)        err "Использование: adc plans [--all]"; exit 1 ;;
 esac
 
 if [ ! -d "$PLANS" ]; then
@@ -130,7 +130,7 @@ if [ "$SHOW_ALL" = 1 ]; then
   [ "$n_closed" -gt 0 ] && { echo; printf '%s' "$CLOSED" | sort | cut -d'|' -f2-; }
 elif [ "$n_closed" -gt 0 ]; then
   echo
-  dim "  закрытых: $n_closed (показать: ai-devcontainer plans --all)"
+  dim "  закрытых: $n_closed (показать: adc plans --all)"
 fi
 
 if [ "$LEGACY" -gt 0 ]; then

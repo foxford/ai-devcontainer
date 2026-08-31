@@ -10,7 +10,7 @@
   },
 
   // dind — чтобы ВНУТРИ песочницы тестировать сборку dev-base и проектных
-  // образов (ai-devcontainer ensure-image, docker build skeleton-проектов).
+  // образов (adc ensure-image, docker build skeleton-проектов).
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
@@ -18,16 +18,18 @@
   "remoteUser": "node",
   "containerUser": "node",
 
+  // host.docker.internal: см. skeleton/pnpm-monorepo/.devcontainer/devcontainer.json
+  // — нужен опциональному MCP-серверу obsidian (README.md, раздел «Obsidian»).
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
+
   // 1) персист-каталоги проекта (иначе docker создаст их от root);
   // 2) dev-base:local из РАБОЧЕЙ КОПИИ — правки Dockerfile платформы сразу
   //    попадают в базу этого контейнера (не из ~/.local/share/ai-devcontainer).
-  "initializeCommand": "AI_DEVCONTAINER_HOME=\"$PWD\" bash bin/ai-devcontainer prepare",
+  "initializeCommand": "AI_DEVCONTAINER_HOME=\"$PWD\" bash bin/adc prepare",
 
   "mounts": [
-    "source=${localEnv:HOME}/Development/@foxford/vgavani,target=/workspaces/vgavani,type=bind,consistency=cached",
-    
-    // Obsidian на хосте, мост через сокет (то же допущение, что в проектах)
-    "source=/tmp/obsidian-cli.sock,target=/run/obsidian.sock,type=bind",
+    // Соседние проекты — добавляй по надобности:
+    // "source=${localEnv:HOME}/Development/@foxford/<repo>,target=/workspaces/<repo>,type=bind,consistency=cached"
 
     // Персист per-project
     "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/claude,target=/home/node/.claude,type=bind,consistency=cached",

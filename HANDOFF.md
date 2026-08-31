@@ -17,7 +17,7 @@ foxford — часть бренда, а не то, что нужно вычищ�
 ## Ключевые архитектурные решения (и почему)
 
 1. **Без registry**: `install.sh` (curl | bash) ставит клон в
-   `~/.local/share/ai-devcontainer` + CLI `bin/ai-devcontainer` в `~/.local/bin`.
+   `~/.local/share/ai-devcontainer` + CLI `bin/adc` в `~/.local/bin`.
    Образ `dev-base:local` собирается ЛОКАЛЬНО; ключ актуальности — хеш
    Dockerfile+tooling/setup.sh (label `aidevcontainer.key`), НЕ git-rev.
 2. **В образ печётся только `tooling/setup.sh`** (нужен при build проектного
@@ -31,9 +31,12 @@ foxford — часть бренда, а не то, что нужно вычищ�
 4. **Персист per-project**: `~/.ai-devcontainer-dev/<проект>/{claude,codex,hermes,
    dsh,opencode,uv,history}` — создаёт initializeCommand проекта (не docker → не root).
    Общие только volumes `platform-ai-tools`, `platform-pnpm-store`.
-5. **Obsidian на хосте** — осознанное допущение: CLI-мост
-   `skeleton/.devcontainer/obsidian` + сокет `/tmp/obsidian-cli.sock →
-   /run/obsidian.sock`; ставится post-create'ом в `~/.local/bin`.
+5. **Obsidian на хосте** — два независимых канала: файловый vault-персист
+   (`obsidian-vault`-маунт, для `graphify --obsidian`) и MCP-сервер плагина
+   Local REST API через `host.docker.internal` (`README.md, раздел «Obsidian»`).
+   Изначально был кастомный unix-socket демон (`.devcontainer/obsidian`) —
+   заменён на готовый плагин, когда выяснилось, что он есть и делает то же
+   самое без самодельного протокола.
 6. **debian-slim + asdf** (не node-образ): `.tool-versions` — единый источник
    версии ноды; Node 25+ без corepack → `setup.sh` ставит его `npm i -g`.
 7. **MCP-серверы — тот же overlay, что скиллы**: платформенный слой
@@ -68,7 +71,7 @@ foxford — часть бренда, а не то, что нужно вычищ�
 - `initializeCommand` — несущий элемент: гарантирует dev-base:local до FROM.
 - «Rebuild Container Without Cache» в VS Code ломает FROM локального образа
   (флаг --pull → pull access denied). Только обычный Rebuild; с нуля —
-  `docker rmi dev-base:local && ai-devcontainer ensure-image`.
+  `docker rmi dev-base:local && adc ensure-image`.
 - Образы, собранные в dind-контейнере (bunker), живут в его внутреннем демоне —
   на хосте базу собирает первый `ensure-image` хостовым докером.
 - Девконтейнер платформы собирает базу из РАБОЧЕЙ КОПИИ
@@ -101,14 +104,14 @@ foxford — часть бренда, а не то, что нужно вычищ�
 - Пресет `@foxford/typescript-config` построен на `${configDir}` — он равен
   каталогу КОНФИГА. Для tsconfig вне пакета (корневой `e2e/`) это ломает
   `typeRoots` и `rootDir`; оба переопределяются явно, см. `skeleton/e2e/tsconfig.json`.
-- Списки исключений в `ai-devcontainer new` — ручные: артефакты новых инструментов
+- Списки исключений в `adc new` — ручные: артефакты новых инструментов
   (`test-results/`, `playwright-report/`) уезжали в свежий проект, пока их туда
   не добавили. Заводишь инструмент с выхлопом в корень — правь и `cmd_new`.
 
 ## Состояние (все проверки — реальными прогонами)
 
 - skeleton: lint/type-check/test/build — зелёные (в т.ч. 225 тестов eslint-config).
-- `ai-devcontainer new` → проект собирается и проходит все таргеты с --skip-nx-cache.
+- `adc new` → проект собирается и проходит все таргеты с --skip-nx-cache.
 - Образы: dev-base:local (слим) и девконтейнеры проекта/платформы собираются.
 - Playwright: `pnpm run e2e` в skeleton зелёный на реальном chromium из volume;
   `e2e:type-check` чистый. Браузерный MCP поднят по stdio и проверен вживую —

@@ -2,7 +2,7 @@
 # tooling/post-create-setup.sh — линейный скрипт без модульных точек входа
 # (нет функций верхнего уровня). Тестируем end-to-end: копируем реальный
 # скрипт в фикстурное дерево платформы (TOOLING_DIR вычисляется от своего
-# расположения, поэтому install-ai-tools.sh/wire-mcp.sh/bin/ai-devcontainer
+# расположения, поэтому install-ai-tools.sh/wire-mcp.sh/bin/adc
 # рядом с ним обязаны быть фикстурными заглушками, не настоящими).
 
 setup() {
@@ -22,8 +22,8 @@ setup() {
 
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/install-ai-tools.sh"
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/wire-mcp.sh"
-  printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/bin/ai-devcontainer"
-  chmod +x "$PLATFORM_FIXTURE/tooling/install-ai-tools.sh" "$PLATFORM_FIXTURE/tooling/wire-mcp.sh" "$PLATFORM_FIXTURE/bin/ai-devcontainer"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/bin/adc"
+  chmod +x "$PLATFORM_FIXTURE/tooling/install-ai-tools.sh" "$PLATFORM_FIXTURE/tooling/wire-mcp.sh" "$PLATFORM_FIXTURE/bin/adc"
 
   PROJECT_DIR="$(mktemp -d)"
 
@@ -72,8 +72,8 @@ run_postcreate() {
   run_postcreate
   assert_success
   [ -x "$HOME/.local/bin/demo-helper" ]
-  [ -L "$HOME/.local/bin/ai-devcontainer" ]
   [ -L "$HOME/.local/bin/adc" ]
+  [ ! -e "$HOME/.local/bin/ai-devcontainer" ]
 }
 
 @test "install-ai-tools.sh падает — постCreate прерывается с exit 1" {
@@ -102,28 +102,28 @@ EOF
   assert_output --partial "graph.html уже есть, пропускаю"
 }
 
-@test "ai-devcontainer sync вызывается" {
-  cat > "$PLATFORM_FIXTURE/bin/ai-devcontainer" <<EOF
+@test "adc sync вызывается" {
+  cat > "$PLATFORM_FIXTURE/bin/adc" <<EOF
 #!/usr/bin/env bash
-echo "\$@" >> "$MOCK_CALLS_DIR/ai-devcontainer.log"
+echo "\$@" >> "$MOCK_CALLS_DIR/adc.log"
 exit 0
 EOF
-  chmod +x "$PLATFORM_FIXTURE/bin/ai-devcontainer"
+  chmod +x "$PLATFORM_FIXTURE/bin/adc"
   run_postcreate
   assert_success
-  run cat "$MOCK_CALLS_DIR/ai-devcontainer.log"
+  run cat "$MOCK_CALLS_DIR/adc.log"
   assert_output --partial "sync"
 }
 
-@test "ai-devcontainer sync падает — предупреждает, но не блокирует" {
-  cat > "$PLATFORM_FIXTURE/bin/ai-devcontainer" <<'EOF'
+@test "adc sync падает — предупреждает, но не блокирует" {
+  cat > "$PLATFORM_FIXTURE/bin/adc" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-  chmod +x "$PLATFORM_FIXTURE/bin/ai-devcontainer"
+  chmod +x "$PLATFORM_FIXTURE/bin/adc"
   run_postcreate
   assert_success
-  assert_output --partial "ai-devcontainer sync failed"
+  assert_output --partial "adc sync failed"
 }
 
 @test "нет .hermes/ в проекте после сида (шаблон платформы пуст) — предупреждение на шаге 8" {
