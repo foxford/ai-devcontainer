@@ -26,8 +26,8 @@
     "@foxford/prettier-config": "workspace:*",
     "@foxford/typescript-config": "workspace:*",
     "@foxford/vitest-config": "workspace:*",
-    "nx": "^22.5.3",
-    "prettier": "^3.6.0",
+    "nx": "^23.1.2",
+    "prettier": "^3.9.6",
     "typescript": "catalog:dev",
     "vitest": "catalog:dev",
     "@types/node": "catalog:dev"
