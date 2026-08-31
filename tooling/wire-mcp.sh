@@ -439,16 +439,45 @@ else
 fi
 
 # ── 8. Hermes — ~/.hermes/config.yaml, ключ mcp_servers ──────
-# Пишем напрямую (см. шапку). yq здесь питоновский (kislyuk/yq) — тот же, что
-# использует .hermes/bootstrap.sh, выражение внутри обычный jq.
+# `yq` — имя, под которым живут два несовместимых проекта: kislyuk/yq
+# (python, обёртка над jq — `apt install yq` на Debian/Ubuntu, синтаксис
+# `-y -i "<jq-фильтр>"`) и mikefarah/yq (Go — `brew install yq`, свой язык
+# выражений, флага `-y` нет вовсе, на нём падает разбор аргументов). Который
+# достанется — решает не наш Dockerfile (там нужный, apt-шный), а хостовое
+# окружение, где вообще-то тоже гоняется этот скрипт (см. шапку файла), и там
+# уже как повезёт. Поэтому не полагаемся на язык выражений yq вообще — он тут
+# только конвертер формата (YAML<->JSON, стабильно у обоих), а мерж и del —
+# нашим jq, который и так жёсткая зависимость. Комментарии в конфиге теряются
+# при таком раунд-трипе — так было и раньше, kislyuk-вариант делает то же
+# самое внутри себя.
+yq_flavor() {
+  case "$(yq --version 2>&1)" in
+    *mikefarah*) echo go ;;
+    *) echo python ;;
+  esac
+}
+yq_to_json() { # $1 = yaml-файл -> JSON на stdout
+  if [ "$(yq_flavor)" = go ]; then yq -o=json e '.' "$1"; else yq . "$1"; fi
+}
+yq_from_json_inplace() { # stdin = JSON -> перезаписывает $1 как YAML
+  if [ "$(yq_flavor)" = go ]; then yq -P -o=yaml -p=json e '.' - > "$1"; else yq -y . > "$1"; fi
+}
+
 if command -v yq >/dev/null 2>&1 && [ -d "$(dirname "$HERMES_CONFIG")" ]; then
   [ -s "$HERMES_CONFIG" ] || echo "{}" > "$HERMES_CONFIG"
   for name in $STALE; do
-    yq -y -i "del(.mcp_servers[\"$name\"])" "$HERMES_CONFIG" 2>/dev/null \
-      && dim "  - Hermes: убрал $name" || true
+    CUR_JSON="$(yq_to_json "$HERMES_CONFIG" 2>/dev/null)" || CUR_JSON=""
+    if [ -n "$CUR_JSON" ] \
+      && NEW_JSON="$(echo "$CUR_JSON" | jq -c --arg name "$name" 'del(.mcp_servers[$name])')" \
+      && echo "$NEW_JSON" | yq_from_json_inplace "$HERMES_CONFIG"; then
+      dim "  - Hermes: убрал $name"
+    fi
   done
   if [ "$COUNT" != 0 ]; then
-    if yq -y -i ".mcp_servers = ((.mcp_servers // {}) + $MERGED)" "$HERMES_CONFIG"; then
+    CUR_JSON="$(yq_to_json "$HERMES_CONFIG" 2>/dev/null)" || CUR_JSON=""
+    if [ -n "$CUR_JSON" ] \
+      && NEW_JSON="$(echo "$CUR_JSON" | jq -c --argjson merged "$MERGED" '.mcp_servers = ((.mcp_servers // {}) + $merged)')" \
+      && echo "$NEW_JSON" | yq_from_json_inplace "$HERMES_CONFIG"; then
       chmod 600 "$HERMES_CONFIG" 2>/dev/null || true
       dim "  Hermes: $COUNT сервер(ов) в $HERMES_CONFIG"
     else
