@@ -18,7 +18,10 @@ teardown() {
 }
 
 run_bin() {
-  AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" run bash "$BIN" "$@"
+  AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" \
+    GIT_AUTHOR_NAME="bats" GIT_AUTHOR_EMAIL="bats@example.com" \
+    GIT_COMMITTER_NAME="bats" GIT_COMMITTER_EMAIL="bats@example.com" \
+    run bash "$BIN" "$@"
 }
 
 @test "new: единственный тип скаффолда выбирается молча" {
