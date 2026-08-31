@@ -21,10 +21,10 @@
     "@foxford/prettier-config": "workspace:*",
     "@foxford/typescript-config": "workspace:*",
     "@foxford/vitest-config": "workspace:*",
-    "@nx/devkit": "21.6.2",
+    "@nx/devkit": "^23.1.2",
     "@types/node": "catalog:dev",
-    "jsonc-eslint-parser": "3.1.0",
-    "tslib": "2.8.1",
+    "jsonc-eslint-parser": "^3.3.0",
+    "tslib": "^2.8.1",
     "vitest": "catalog:dev"
   }
 }
