@@ -1,0 +1,13 @@
+{
+  "extends": "@foxford/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "build"]
+}

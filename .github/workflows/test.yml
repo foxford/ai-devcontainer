@@ -1,0 +1,17 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  bats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: bats-тесты tooling/*.sh + bin/ai-devcontainer
+        run: bash tests/run.sh

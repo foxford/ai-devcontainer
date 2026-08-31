@@ -1,0 +1,43 @@
+{
+  "name": "@foxford/prettier-config",
+  "version": "0.1.0",
+  "description": "Prettier config for foxford projects",
+  "keywords": [
+    "prettier",
+    "config"
+  ],
+  "license": "MIT",
+  "main": "./index.cjs",
+  "module": "./index.js",
+  "type": "module",
+  "exports": {
+    "./README.mdx": "./README.mdx",
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "scripts": {
+    "============================ BUILD =============================": "",
+    "build": "echo \"Build process does not exist\" && exit 0",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "echo \"No type-check specified\" && exit 0",
+    "lint:eslint": "eslint --cache --cache-strategy content --max-warnings=0 ./",
+    "============================ TEST =============================": "",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "prettier": ">=3.3.0"
+  },
+  "devDependencies": {
+    "@foxford/eslint-config": "workspace:*",
+    "@foxford/vitest-config": "workspace:*",
+    "vitest": "catalog:dev"
+  },
+  "files": [
+    "index.js",
+    "index.cjs",
+    "README.mdx"
+  ]
+}

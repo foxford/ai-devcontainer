@@ -1,0 +1,28 @@
+{
+  "name": "@foxford/<%= name %>",
+  "sourceRoot": "{projectRoot}/src",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "pnpm run lint:clean",
+          "pnpm run lint:eslint"
+        ],
+        "parallel": false,
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm run lint:type-check",
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "tags": [
+    "lintable"
+  ]
+}

@@ -1,0 +1,26 @@
+## Пакет prettier конфигурации
+
+Содержит в себе конфигурацию [Prettier](https://prettier.io/):
+
+## Использование
+
+Добавьте в ваш `package.json` секцию `browserslist`
+
+```json
+"prettier": "@foxford/prettier-config",
+```
+
+или импортируйте из пакета:
+
+```js title=".prettierrc.js"
+import prettierConfig from '@foxford/prettier-config'
+
+const config = {
+  ...prettierConfig,
+  tabWidth: 4,
+  semi: false,
+  singleQuote: true,
+};
+
+export default config;
+```

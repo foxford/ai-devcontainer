@@ -1,0 +1,11 @@
+# Контекст сборки devcontainer (context: "..") — не тащим тяжёлое в демон:
+# Dockerfile копирует только package.json и .tool-versions.
+node_modules
+**/node_modules
+.nx
+.git
+.pnpm-store
+graphify-out
+**/build
+**/dist
+coverage

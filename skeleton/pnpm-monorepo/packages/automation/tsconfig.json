@@ -1,0 +1,22 @@
+{
+  "extends": "@foxford/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": null,
+    "composite": true,
+    "typeRoots": [
+      "${configDir}/node_modules/@types",
+      "${configDir}/typings",
+      "${configDir}/node_modules"
+    ],
+  },
+  "files": [],
+  "include": [],
+  "references": [
+    {
+      "path": "./tsconfig.lib.json"
+    },
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}

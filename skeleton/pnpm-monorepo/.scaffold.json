@@ -1,0 +1,8 @@
+{
+  "label": "Node/TS монорепа (Nx + pnpm)",
+  "rename": [
+    { "file": "package.json", "pattern": "\"my-project\"", "replace": "\"{{NAME}}\"" },
+    { "file": ".devcontainer/devcontainer.json", "pattern": "MyProject", "replace": "{{NAME}}" },
+    { "file": ".devcontainer/Dockerfile", "pattern": "MyProject", "replace": "{{NAME}}" }
+  ]
+}

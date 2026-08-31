@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "$id": "Index",
+  "title": "",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "",
+      "x-prompt": "Имя пакета?",
+      "x-priority": "important"
+    },
+    "useTsup": {
+      "type": "boolean",
+      "description": "Tsup сборщик для сборки простых либ",
+      "default": false,
+      "x-prompt": "Tsup сборщик?",
+      "x-priority": "important"
+    }
+  },
+  "required": ["name", "useTsup"]
+}

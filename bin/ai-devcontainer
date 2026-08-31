@@ -1,0 +1,642 @@
+#!/usr/bin/env bash
+# ai-devcontainer — CLI платформы. Ставится install.sh в ~/.local/bin.
+#
+# Команды:
+#   ai-devcontainer new <name> [dir] [--type <t>]
+#                                      — новый проект из skeleton; без --type
+#                                        спросит тип, если их несколько
+#   ai-devcontainer ensure-image      — собрать dev-base:local, если нет/устарел
+#   ai-devcontainer update            — на хосте: git pull платформы + пересборка
+#                                        образа; в контейнере: то же, что sync
+#   ai-devcontainer sync [--adopt] [--type <t>]
+#                                      — применить платформу к проекту: скиллы,
+#                                        доки, MCP, .gitignore + показать, что
+#                                        приехало с прошлого раза. --adopt
+#                                        заводит .devcontainer/ в репозитории,
+#                                        который платформой ещё не управлялся
+#   ai-devcontainer doctor            — проверить окружение машины; из каталога
+#                                        проекта — ещё и его devcontainer.json
+#   ai-devcontainer skill <cmd>       — скиллы проекта: list / status / fork /
+#                                        unfork / migrate / sync
+#   ai-devcontainer mcp <list|sync>   — MCP-серверы проекта: показать / пересобрать
+#   ai-devcontainer plans [--all]     — задачи проекта: что в работе, что залежалось
+#   ai-devcontainer prepare           — хостовая подготовка проекта; её зовёт
+#                                        initializeCommand, руками не нужна
+#
+# Платформа живёт в $AI_DEVCONTAINER_HOME (default ~/.local/share/ai-devcontainer).
+# Команда есть и на хосте, и внутри контейнера (там — симлинк на
+# /opt/ai-devcontainer/bin). new/ensure-image/prepare — только с хоста.
+
+set -euo pipefail
+
+PLATFORM_ROOT="${AI_DEVCONTAINER_HOME:-$HOME/.local/share/ai-devcontainer}"
+# запуск прямо из клона (разработка платформы): берём корень от себя
+SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+[ -f "$PLATFORM_ROOT/Dockerfile" ] || PLATFORM_ROOT="$SELF_DIR"
+
+IMAGE_TAG="dev-base:local"
+REV_LABEL="aidevcontainer.key"
+
+C_GREEN='\033[0;32m'; C_YELLOW='\033[0;33m'; C_RED='\033[0;31m'; C_DIM='\033[2m'; C_RESET='\033[0m'
+log()  { echo -e "${C_GREEN}==>${C_RESET} $*"; }
+warn() { echo -e "${C_YELLOW}!! ${C_RESET}$*" >&2; }
+err()  { echo -e "${C_RED}xx ${C_RESET}$*" >&2; }
+dim()  { echo -e "${C_DIM}$*${C_RESET}"; }
+
+platform_rev() { git -C "$PLATFORM_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown"; }
+
+# Корень репозитория проекта — вверх от текущего каталога: терминал может быть
+# открыт в подкаталоге, и тогда $PWD не корень.
+repo_root() {
+  local d="${REPO_ROOT:-$PWD}"
+  while [ "$d" != "/" ] && [ ! -d "$d/.git" ] && [ ! -d "$d/.devcontainer" ]; do
+    d="$(dirname "$d")"
+  done
+  [ "$d" = "/" ] && d="$PWD"
+  echo "$d"
+}
+
+# Отметка «какую ревизию платформы этот проект уже применил». Лежит в .claude/
+# (генерируемое, в .gitignore) — переживает пересборку дерева скиллов и не
+# создаёт дифов в трекаемых файлах. По ней sync показывает, ЧТО именно
+# приехало, а motd подсказывает, что платформа уехала вперёд.
+REV_STAMP=".claude/.platform-rev"
+
+# Один и тот же CLI живёт на хосте (~/.local/bin из install.sh) и внутри
+# контейнера (симлинк на /opt/ai-devcontainer/bin, кладёт post-create) — чтобы имя
+# команды не зависело от того, где ты сидишь. Но клон платформы примонтирован в
+# контейнер READ-ONLY, поэтому команды, меняющие саму платформу или образ,
+# работают только с хоста. Отличаем по писабельности корня, а не по /.dockerenv:
+# именно она и мешает.
+host_only() {
+  [ -w "$PLATFORM_ROOT" ] && return 0
+  err "«$1» доступна только на хосте: $PLATFORM_ROOT примонтирован read-only."
+  echo "    ${2:-Выполни на хосте, затем в контейнере: ai-devcontainer skill sync}" >&2
+  exit 1
+}
+
+# Ключ актуальности образа — хеш того, что РЕАЛЬНО в него печётся
+# (Dockerfile + tooling/setup.sh). Скрипты/скиллы монтируются в рантайме
+# из клона, их правка пересборку образа не требует.
+image_key() { cat "$PLATFORM_ROOT/Dockerfile" "$PLATFORM_ROOT/tooling/setup.sh" 2>/dev/null | sha256sum | cut -c1-12; }
+
+# Типы скаффолда = подкаталоги skeleton/, каждый с манифестом .scaffold.json.
+# Позволяет `new` расти под Rails/Go/что-угодно без правки этого файла.
+list_scaffold_types() {
+  local d
+  for d in "$PLATFORM_ROOT"/skeleton/*/; do
+    [ -d "$d" ] || continue
+    basename "$d"
+  done
+}
+
+# Выбирает тип скаффолда и печатает его в stdout (весь остальной вывод —
+# в stderr, функция вызывается через command substitution).
+# $1 — явный --type (может быть пустой строкой, тогда выбираем сами).
+pick_scaffold_type() {
+  local explicit="$1"
+  local types=() t
+  while IFS= read -r t; do types+=("$t"); done < <(list_scaffold_types)
+
+  if [ "${#types[@]}" -eq 0 ]; then
+    err "нет ни одного типа скаффолда в $PLATFORM_ROOT/skeleton/"; exit 1
+  fi
+
+  if [ -n "$explicit" ]; then
+    for t in "${types[@]}"; do
+      [ "$t" = "$explicit" ] && { echo "$explicit"; return 0; }
+    done
+    err "неизвестный тип скаффолда «$explicit». Доступные: ${types[*]}"; exit 1
+  fi
+
+  if [ "${#types[@]}" -eq 1 ]; then
+    dim "  тип скаффолда: ${types[0]} (единственный доступный)" >&2
+    echo "${types[0]}"
+    return 0
+  fi
+
+  if [ -t 0 ]; then
+    echo "Доступные типы скаффолда:" >&2
+    local i=1 label
+    for t in "${types[@]}"; do
+      label="$(jq -r '.label // empty' "$PLATFORM_ROOT/skeleton/$t/.scaffold.json" 2>/dev/null)"
+      echo "  $i) $t${label:+ — $label}" >&2
+      i=$((i + 1))
+    done
+    local choice
+    read -r -p "Выбери номер: " choice
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#types[@]}" ]; then
+      err "некорректный выбор"; exit 1
+    fi
+    echo "${types[$((choice - 1))]}"
+    return 0
+  fi
+
+  err "несколько типов скаффолда доступны (${types[*]}), но нет TTY для выбора — передай --type явно"
+  exit 1
+}
+
+# Применяет .rename[] из манифеста скаффолда: подстановка {{NAME}} и sed по
+# файлам проекта. $4 (опционально) — применить только записи, чей "file"
+# начинается с этого префикса (используется adopt-режимом sync, Фаза 4, —
+# он трогает только .devcontainer/, не весь скелетон).
+apply_scaffold_rename() {
+  local manifest="$1" dest="$2" name="$3" prefix="${4:-}"
+  [ -f "$manifest" ] || return 0
+
+  local count i
+  count="$(jq '(.rename // []) | length' "$manifest")"
+  for ((i = 0; i < count; i++)); do
+    local file pattern replace
+    file="$(jq -r ".rename[$i].file" "$manifest")"
+    [ -n "$prefix" ] && [[ "$file" != "$prefix"* ]] && continue
+    pattern="$(jq -r ".rename[$i].pattern" "$manifest")"
+    replace="$(jq -r ".rename[$i].replace" "$manifest" | sed "s/{{NAME}}/$name/g")"
+    if [ -f "$dest/$file" ]; then
+      sed -i "s/$pattern/$replace/g" "$dest/$file"
+    else
+      warn "скаффолд: нет файла для переименования: $file"
+    fi
+  done
+}
+
+cmd_new() {
+  local TYPE="" positional=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --type) TYPE="${2:?--type требует значения}"; shift 2 ;;
+      *) positional+=("$1"); shift ;;
+    esac
+  done
+  local NAME="${positional[0]:?Использование: ai-devcontainer new <name> [dir] [--type <type>]}"
+  local DEST="${positional[1]:-$PWD/$NAME}"
+
+  TYPE="$(pick_scaffold_type "$TYPE")"
+  local SRC="$PLATFORM_ROOT/skeleton/$TYPE"
+
+  if [ -e "$DEST" ] && [ -n "$(ls -A "$DEST" 2>/dev/null)" ]; then
+    err "$DEST уже существует и не пуст — отказываюсь перезаписывать"; exit 1
+  fi
+  mkdir -p "$DEST"
+
+  # rsync: skeleton — живая монорепа, рабочие артефакты в шаблон не берём
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a \
+      --exclude node_modules --exclude .nx --exclude .git \
+      --exclude '.eslintcache' --exclude build --exclude dist --exclude coverage \
+      --exclude test-results --exclude playwright-report --exclude blob-report \
+      --exclude .playwright-mcp --exclude .mcp.json --exclude .scaffold.json \
+      "$SRC/." "$DEST/"
+  else
+    cp -a "$SRC/." "$DEST/"
+    rm -rf "$DEST/node_modules" "$DEST/.nx" "$DEST/.git" \
+           "$DEST/test-results" "$DEST/playwright-report" "$DEST/blob-report" \
+           "$DEST/.playwright-mcp" "$DEST/.mcp.json" "$DEST/.scaffold.json" \
+           "$DEST"/packages/*/node_modules "$DEST"/packages/*/build \
+           "$DEST"/packages/*/dist "$DEST"/packages/*/.eslintcache 2>/dev/null || true
+  fi
+
+  apply_scaffold_rename "$SRC/.scaffold.json" "$DEST" "$NAME"
+
+  ( cd "$DEST" && git init -q && git add -A && git commit -qm "chore: bootstrap from ai-devcontainer skeleton ($TYPE, $(platform_rev))" )
+
+  log "Проект создан: $DEST (тип: $TYPE)"
+  echo "    Дальше:"
+  echo "      1. создай репо на GitHub и запушь"
+  echo "      2. открой в VS Code → Reopen in Container"
+  echo "         (образ dev-base:local соберётся сам при первом запуске;"
+  echo "          postCreate засидит .hermes и соберёт скиллы из платформы)"
+}
+
+cmd_ensure_image() {
+  host_only "ensure-image"
+  command -v docker >/dev/null 2>&1 || { err "docker не найден"; exit 1; }
+  local want have
+  want="$(image_key)"
+  have="$(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null || true)"
+  if [ -n "$have" ] && [ "$have" = "$want" ]; then
+    log "$IMAGE_TAG актуален (key $have)"
+    return 0
+  fi
+  log "Собираю $IMAGE_TAG (key $want; было: ${have:-нет образа}) — первый раз ~5-10 мин, дальше кеш"
+  docker build -f "$PLATFORM_ROOT/Dockerfile" \
+    --label "$REV_LABEL=$want" \
+    -t "$IMAGE_TAG" "$PLATFORM_ROOT"
+  log "Готово: $IMAGE_TAG"
+}
+
+cmd_update() {
+  # Внутри контейнера клон read-only: ни pull, ни сборки образа. Но человек,
+  # набравший «update», хочет «приведи всё в актуальное состояние» — падать
+  # ошибкой вместо этого бессмысленно. Делаем ту часть, которая здесь возможна,
+  # и честно говорим, чего не сделали и где это делается.
+  if [ ! -w "$PLATFORM_ROOT" ]; then
+    warn "Клон платформы примонтирован read-only: pull и пересборка образа — только с хоста."
+    echo "    Применяю то, что уже приехало в $PLATFORM_ROOT:" >&2
+    echo
+    cmd_sync
+    return 0
+  fi
+  if git -C "$PLATFORM_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    log "Обновляю платформу: $PLATFORM_ROOT"
+    git -C "$PLATFORM_ROOT" pull --ff-only
+  else
+    warn "$PLATFORM_ROOT — не git-клон, пропускаю pull"
+  fi
+  cmd_ensure_image
+  log "Платформа на rev $(platform_rev). Что дальше:"
+  echo "      • в каждом проекте — ai-devcontainer sync (скиллы, доки, MCP,"
+  echo "        планы; покажет, что именно приехало). Форки не затираются."
+  echo "      • окружение — Rebuild Container (возьмёт свежий dev-base:local)"
+  echo "      • конфиг-пакеты — перенос дифа из skeleton/packages/* руками"
+}
+
+# Применить платформу к проекту — одна команда вместо «сходи в skill sync,
+# потом в mcp sync, потом догадайся, что ещё появилось».
+#
+# Раньше этого не было, и обновление выглядело так: `skill sync` (который на
+# самом деле давно не про скиллы — он раскладывает и доки, и индекс, и
+# .gitignore) плюс `mcp sync`, причём знать про оба надо было заранее. Понять,
+# что в платформе вообще появилось новое, было неоткуда.
+#
+# Работает и в контейнере, и на хосте: ничего в клоне платформы не меняет,
+# только раскладывает уже приехавшее по проекту.
+# Репозиторий «не заведён под платформу»: либо вовсе нет devcontainer.json,
+# либо в нём нет вызова prepare (значит это не наш шаблон, а что-то своё или
+# устаревшее). Один источник правды с check_project_devcontainer — та же
+# проверка, что уже используется для «чего не хватает» в существующем файле.
+is_unmanaged_repo() {
+  local root="$1" dc="$root/.devcontainer/devcontainer.json"
+  [ -f "$dc" ] || return 0
+  grep -v '^[[:space:]]*//' "$dc" 2>/dev/null | grep -qF "ai-devcontainer prepare" && return 1
+  return 0
+}
+
+# Лучший угадыш типа скаффолда по содержимому репо — только дефолт для
+# pick_scaffold_type, не подменяет её собственный выбор/ошибку при нескольких
+# типах. Список условий растёт вместе с skeleton/<type>/.
+guess_scaffold_type() {
+  local root="$1"
+  if [ -f "$root/package.json" ] && [ -f "$root/pnpm-lock.yaml" ]; then
+    echo "pnpm-monorepo"
+  fi
+}
+
+# `sync --adopt`: заводит .devcontainer/ в СУЩЕСТВУЮЩЕМ репозитории, который
+# раньше платформой не управлялся. В отличие от `new` не трогает код проекта —
+# копирует только .devcontainer/<type>/, не весь скелетон.
+cmd_adopt_devcontainer() {
+  local root="$1" type_arg="$2"
+  local existing="$root/.devcontainer"
+
+  if [ -d "$existing" ] && [ -n "$(ls -A "$existing" 2>/dev/null)" ]; then
+    err "adopt: $existing уже существует и не пуст — adopt только для репозиториев без него."
+    echo "    Правь руками или удали каталог, если хочешь начать заново." >&2
+    exit 1
+  fi
+
+  local guess="${type_arg:-$(guess_scaffold_type "$root")}"
+  local type; type="$(pick_scaffold_type "$guess")"
+  local src="$PLATFORM_ROOT/skeleton/$type"
+  local name; name="$(basename "$root")"
+
+  log "adopt: добавляю .devcontainer/ из скаффолда «$type» в $(basename "$root")"
+  echo "    Приедет: .devcontainer/devcontainer.json, .devcontainer/Dockerfile" >&2
+  echo "    Не трогается: весь остальной код репозитория" >&2
+
+  mkdir -p "$existing"
+  cp -a "$src/.devcontainer/." "$existing/"
+  apply_scaffold_rename "$src/.scaffold.json" "$root" "$name" ".devcontainer/"
+}
+
+cmd_sync() {
+  local adopt=0 type_arg=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --adopt) adopt=1; shift ;;
+      --type)  type_arg="${2:?--type требует значения}"; shift 2 ;;
+      *) err "sync: неизвестный аргумент «$1»"; exit 1 ;;
+    esac
+  done
+
+  local root; root="$(repo_root)"
+
+  if [ "$adopt" = 1 ]; then
+    cmd_adopt_devcontainer "$root" "$type_arg"
+  elif is_unmanaged_repo "$root"; then
+    warn "этот репозиторий не заведён под платформу (нет .devcontainer/devcontainer.json с вызовом prepare)"
+    echo "    Заведи его: ai-devcontainer sync --adopt" >&2
+    echo "    Ниже всё равно разложу скиллы/доки/MCP — они не зависят от devcontainer'а." >&2
+    echo >&2
+  fi
+
+  local stamp="$root/$REV_STAMP" was="" now
+  now="$(platform_rev)"
+  [ -f "$stamp" ] && was="$(cat "$stamp" 2>/dev/null || true)"
+
+  log "Применяю платформу (rev $now) к проекту $(basename "$root")"
+
+  # скиллы + платформенные доки + индекс + .gitignore
+  AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$root" bash "$PLATFORM_ROOT/tooling/skill.sh" sync
+  # MCP-серверы (свой скрипт: раздаёт сразу в три агента)
+  if [ -f "$PLATFORM_ROOT/tooling/wire-mcp.sh" ]; then
+    REPO_ROOT="$root" bash "$PLATFORM_ROOT/tooling/wire-mcp.sh" || warn "wire-mcp.sh failed (не блокирует)"
+  fi
+
+  mkdir -p "$(dirname "$stamp")"
+  printf '%s\n' "$now" > "$stamp"
+
+  # Главное ради чего всё: показать, ЧТО приехало. Тексты коммитов платформы
+  # пишутся человеку, так что отдельный changelog заводить не за чем.
+  if [ -n "$was" ] && [ "$was" != "$now" ]; then
+    echo
+    log "Приехало с прошлого раза ($was → $now):"
+    git -C "$PLATFORM_ROOT" log --oneline --no-decorate "$was..$now" 2>/dev/null \
+      | sed 's/^/      /' || echo "      (история недоступна — платформа не git-клон?)"
+  elif [ -z "$was" ]; then
+    dim "  первый sync в этом проекте — с чем сравнивать, пока нет"
+  fi
+
+  echo
+  check_project_devcontainer || true
+  echo "    Перезапусти агента (claude / codex / hermes / dsh): скиллы и MCP читаются на старте." >&2
+}
+
+# Скиллы проекта. Прокидываем корни: платформа известна нам, проект — это $PWD.
+cmd_skill() {
+  local helper="$PLATFORM_ROOT/tooling/skill.sh"
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+  AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$PWD" bash "$helper" "$@"
+}
+
+# MCP-серверы проекта. Форков, как у скиллов, тут нет: слой проекта — один
+# небольшой файл .agents/mcp.json, правится руками. Поэтому всего две команды.
+cmd_mcp() {
+  local helper="$PLATFORM_ROOT/tooling/wire-mcp.sh"
+  case "${1:-list}" in
+    sync)
+      [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+      REPO_ROOT="$PWD" bash "$helper"
+      echo "    Перезапусти агента (claude / codex / hermes / dsh), чтобы он подхватил серверы." ;;
+    list)
+      echo "платформа:  $PLATFORM_ROOT/mcp/servers.json"
+      echo "проект:     $PWD/.agents/mcp.json$([ -f "$PWD/.agents/mcp.json" ] || echo ' (нет — проект ничего не меняет)')"
+      if [ -f "$PWD/.mcp.json" ] && command -v jq >/dev/null 2>&1; then
+        echo "роздано:"
+        # HTTP-серверы описываются не command/args, а адресом. Токен в
+        # query-строке маскируем: .mcp.json лежит с правами 600, а вывод этой
+        # команды уходит в скроллбек терминала и в чужие пасты.
+        jq -r '.mcpServers | to_entries[] | "  \(.key) → " +
+                 (if .value.url
+                  then (.value.url | sub("(?<p>[?&](access_token|token|api_key)=)[^&]+"; "\(.p)***")) + "  [http]"
+                  else .value.command + " " + ((.value.args // []) | join(" ")) end)' "$PWD/.mcp.json"
+        echo "    (что НЕ роздано и почему — покажет ai-devcontainer mcp sync;"
+        echo "     OAuth-серверам вроде figma нужен разовый ручной логин — см. AGENTS.platform.md)"
+      else
+        echo "роздано:    нечего показать (нет .mcp.json — запусти ai-devcontainer mcp sync)"
+      fi ;;
+    *) err "Использование: ai-devcontainer mcp <list|sync>"; exit 1 ;;
+  esac
+}
+
+# Задачи проекта. Команда появилась вместе с отказом от plans/archive/: раньше
+# «что в работе» читалось из дерева каталогов, а теперь путь задачи неизменен и
+# статус живёт только во фронтматтере — значит обзор обязан быть запросом.
+cmd_plans() {
+  local helper="$PLATFORM_ROOT/tooling/plans.sh"
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (ai-devcontainer update)"; exit 1; }
+  REPO_ROOT="$(repo_root)" bash "$helper" "$@"
+}
+
+# Сверка devcontainer.json ПРОЕКТА с платформенным чек-листом.
+#
+# Зачем вообще: devcontainer.json — единственный платформенный артефакт, который
+# копируется при `new` и дальше расходится навсегда. Скиллы уехали в overlay,
+# доки — в симлинки, а этот файл так раздать нельзя: VS Code нужен настоящий
+# файл, и он законно проектный (имя, маунты, порты, расширения). Раз доставить
+# правку в живой проект нечем — хотя бы говорим, чего в нём не хватает, пока
+# нехватка не всплыла посреди работы.
+#
+# Разбираем грепом, а не jq/python: devcontainer.json — JSONC (jq его не читает),
+# а doctor обязан работать и на голом хосте. Full-line комментарии срезаем —
+# иначе закомментированный образец маунта считался бы за настоящий.
+#
+# --quiet: печатать только расхождения. В этом режиме проверку зовёт prepare —
+# он идёт на КАЖДОМ старте контейнера, и «всё на месте» там было бы шумом.
+check_project_devcontainer() {
+  local quiet=0
+  [ "${1:-}" = "--quiet" ] && quiet=1
+  local root; root="$(repo_root)"
+  local dc="$root/.devcontainer/devcontainer.json"
+  if [ ! -f "$dc" ]; then
+    [ "$quiet" = 1 ] || echo "проект:     devcontainer.json не найден (запусти из каталога проекта, чтобы сверить его)"
+    return 0
+  fi
+  if [ "$(readlink -f "$root")" = "$(readlink -f "$PLATFORM_ROOT")" ]; then
+    [ "$quiet" = 1 ] || echo "проект:     это репозиторий платформы — сверять не с чем"
+    return 0
+  fi
+  [ "$quiet" = 1 ] || echo "проект:     $(basename "$root") ($dc)"
+
+  local body miss=0
+  body="$(grep -v '^[[:space:]]*//' "$dc" || true)"
+  has() { printf '%s' "$body" | grep -qF "$1"; }
+
+  if ! has "target=/opt/ai-devcontainer"; then
+    miss=1; warn "  нет маунта клона платформы → скиллы, доки и tooling в проект не приедут"
+    echo '      "source=${localEnv:HOME}/.local/share/ai-devcontainer,target=/opt/ai-devcontainer,type=bind,readonly"' >&2
+  fi
+  if ! has "tooling/post-create-setup.sh"; then
+    miss=1; warn "  postCreateCommand не зовёт post-create-setup.sh платформы"
+    echo '      "postCreateCommand": "bash /opt/ai-devcontainer/tooling/post-create-setup.sh"' >&2
+  fi
+  # initializeCommand: ждём вызов prepare. Старая форма (развёрнутый mkdir +
+  # ensure-image) работает, но вморожена в проект — платформа не сможет
+  # поправить хостовый шаг, не обойдя все репозитории руками.
+  if has "ai-devcontainer prepare"; then
+    :
+  elif has "ensure-image"; then
+    miss=1; warn "  initializeCommand старой формы: логика хостового шага вморожена в проект и обновлений не получит"
+    echo '      "initializeCommand": "ai-devcontainer prepare || \"$HOME/.local/bin/ai-devcontainer\" prepare"' >&2
+    echo "      Персист по историческому пути не потеряется: prepare --persist ~/.<проект>-dev" >&2
+  else
+    miss=1; warn "  в initializeCommand нет ни prepare, ни ensure-image → dev-base:local может не оказаться собран к FROM"
+  fi
+  # Браузеры Playwright переживают rebuild только в volume. Без него они каждый
+  # раз качаются заново (~250 МБ на две ревизии) — молча, в postCreate, и
+  # человек видит только «почему-то долго».
+  if ! has "target=/home/node/.cache/ms-playwright"; then
+    miss=1; warn "  нет volume под браузеры Playwright → они будут перекачиваться на каждый rebuild"
+    echo '      "source=platform-playwright-browsers,target=/home/node/.cache/ms-playwright,type=volume"' >&2
+  fi
+  # В /opt/ai-tools лежит только лаунчер claude; сам бинарь (324 МБ) — в
+  # ~/.local/share/claude/versions/. Без volume он контейнер-локальный, и
+  # install-ai-tools честно качает его заново на КАЖДЫЙ rebuild.
+  if ! has "target=/home/node/.local/share/claude"; then
+    miss=1; warn "  нет volume под бинарь Claude Code → 324 МБ перекачки на каждый rebuild"
+    echo '      "source=platform-claude-versions,target=/home/node/.local/share/claude,type=volume"' >&2
+  fi
+  # DSH держит В HOME всё: профили (это pnpm-зависимости бандлов, они ставятся
+  # при первом старте), сессии, ключ и cordis.patch.yml с MCP-серверами.
+  # Проектного скоупа у него нет вовсе — без пер-проектного маунта ~/.dsh
+  # окажется контейнер-локальным и на каждый rebuild будет ставить профили заново,
+  # а раздача MCP из платформы будет уходить в никуда.
+  if ! has "target=/home/node/.dsh"; then
+    miss=1; warn "  нет маунта под ~/.dsh → профили, сессии и MCP DeepSeek Harness не переживут rebuild"
+    echo '      "source=${localEnv:HOME}/.ai-devcontainer-dev/<проект>/dsh,target=/home/node/.dsh,type=bind,consistency=cached"' >&2
+  fi
+  # docker спрашиваем только с тех, кому он нужен: наличие compose-файла в репо
+  if [ -n "$(find "$root" -maxdepth 3 \( -name node_modules -o -name .git \) -prune -o \
+             \( -name 'docker-compose*.y*ml' -o -name 'compose*.y*ml' \) -print -quit 2>/dev/null)" ] \
+     && ! has "docker-in-docker"; then
+    miss=1; warn "  в репо есть compose-файлы, а feature docker-in-docker не объявлена → docker compose в контейнере не запустится"
+    echo '      "features": { "ghcr.io/devcontainers/features/docker-in-docker:2": {} }' >&2
+    echo "      Пробрасывать сокет хоста вместо этого НЕ надо: относительные bind-маунты" >&2
+    echo "      compose'а резолвит хостовый демон, и они молча превращаются в пустые каталоги." >&2
+  fi
+
+  [ "$miss" = 0 ] && [ "$quiet" = 0 ] && log "  devcontainer: всё на месте"
+  return "$miss"
+}
+
+# Хостовая подготовка проекта — то единственное, что зовёт его devcontainer.json
+# перед сборкой контейнера.
+#
+# Смысл не в самих шагах (они были и раньше), а в том, ЧТО ЛЕЖИТ В ПРОЕКТЕ.
+# Было — развёрнутый mkdir шести каталогов плюс ensure-image, то есть логика,
+# вмороженная в файл, который платформа не может обновить: раздать
+# devcontainer.json нельзя (VS Code нужен настоящий файл, и он законно
+# проектный — имя, маунты, порты). Стало — одна строка, которая не меняется
+# никогда, а вся логика живёт здесь и приезжает обычным `ai-devcontainer update`.
+# Свести платформенную часть конфига к неизменяемому вызову оказалось дешевле,
+# чем научиться раздавать сам конфиг.
+#
+# Почему не devcontainer Feature (разбор целиком — docs/devcontainer-delivery.md):
+# фича не может нести initializeCommand вовсе, а в её mounts не подставляется
+# ${localEnv:HOME} — то есть ни этот шаг, ни bind-маунты хостовых путей в неё
+# не переезжают.
+#
+#   --name <имя>       имя проекта для персиста (по умолчанию — имя каталога)
+#   --persist <путь>   куда класть claude/codex/hermes/… (по умолчанию
+#                      ~/.ai-devcontainer-dev/<имя>). Нужен переехавшим проектам:
+#                      у них персист уже лежит по историческому пути, и
+#                      переезд стоил бы логинов и истории сессий.
+cmd_prepare() {
+  host_only "prepare" "Её зовёт devcontainer.json проекта на хосте — до того, как контейнер существует."
+  local root="$PWD" name persist=""
+  name="$(basename "$root")"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name)    name="${2:?--name требует значения}"; shift 2;;
+      --persist) persist="${2:?--persist требует значения}"; shift 2;;
+      *) err "prepare: неизвестный аргумент «$1» (см. ai-devcontainer help)"; exit 1;;
+    esac
+  done
+  # 1. Персист-каталоги. Создаём МЫ, а не docker: docker создал бы недостающих
+  #    родителей от root, и postCreate упал бы на первом mkdir в ~/.local (EACCES).
+  #
+  #    Корень персиста берём ИЗ САМОГО devcontainer.json, а не из соглашения об
+  #    именах: имя каталога проекта и имя в маунтах могут разойтись
+  #    (`new myapp ~/dir`), и тогда мы создали бы одно, а docker полез бы за
+  #    другим — ровно тот EACCES, ради которого шаг и нужен. Заодно бесплатно
+  #    работают проекты с историческим путём персиста (~/.<проект>-dev).
+  #
+  #    Ищем ОДИН якорный маунт — тот, что ложится на ~/.claude, — и раскладываем
+  #    полный набор рядом с ним. Не «все распознанные маунты»: часть строк может
+  #    быть записана иначе (объектная форма, другой порядок ключей), и тогда мы
+  #    создали бы половину каталогов, а недостающие снова достались бы docker'у
+  #    и root'у. Один якорь либо находится, либо нет — половины не бывает.
+  local d dc="$root/.devcontainer/devcontainer.json" anchor
+  if [ -z "$persist" ] && [ -f "$dc" ]; then
+    # `|| true` обязателен: якоря может не быть, grep вернёт 1, и под
+    # set -e + pipefail подстановка уронила бы prepare — то есть ровно тот
+    # фолбэк, ради которого всё это и написано.
+    anchor="$(grep -v '^[[:space:]]*//' "$dc" \
+              | grep -o 'source=[^",]*,target=/home/node/\.claude,type=bind' \
+              | sed 's/^source=//; s/,target=.*//' | head -1 || true)"
+    case "$anchor" in
+      '${localEnv:HOME}'/*) persist="$(dirname "$HOME/${anchor#'${localEnv:HOME}'/}")" ;;
+    esac
+  fi
+  # Якоря нет (конфига нет либо он непривычной формы) — соглашение об именах.
+  [ -n "$persist" ] || persist="$HOME/.ai-devcontainer-dev/$name"
+  for d in claude opencode codex hermes dsh uv history; do
+    mkdir -p "$persist/$d"
+  done
+
+  # 2. Реестр проектов. Списка своих проектов у платформы нет и взяться ему
+  #    больше неоткуда: prepare — единственное место, которое гарантированно
+  #    выполняется у каждого проекта на хосте. Он нужен, чтобы однажды пройтись
+  #    по всем разом (массовая сверка, миграции) вместо обхода руками.
+  local reg="$HOME/.ai-devcontainer-dev/projects"
+  mkdir -p "$(dirname "$reg")"
+  grep -qxF "$root" "$reg" 2>/dev/null || echo "$root" >> "$reg"
+
+  # 3. Образ: без него FROM dev-base:local в проектном Dockerfile не найдёт базу.
+  cmd_ensure_image
+
+  # 4. Сверка devcontainer. Расхождение показываем, но старт НЕ ломаем: человек
+  #    открывает контейнер, чтобы работать, а не чтобы спорить с доктором.
+  check_project_devcontainer --quiet || true
+}
+
+cmd_doctor() {
+  local ok=1
+  echo "Платформа:  $PLATFORM_ROOT (rev $(platform_rev))"
+
+  # Образ и персист — ХОСТОВЫЕ факты, и внутри контейнера оба врут:
+  #   • docker здесь — внутренний демон (dind), а не тот, что собирал этот
+  #     девконтейнер; лежащий в нём dev-base:local — другой объект, и его
+  #     «устарел» не говорит ничего о необходимости ребилда;
+  #   • $HOME — /home/node, а ~/.ai-devcontainer-dev живёт на хосте: смонтировано
+  #     сюда лишь его содержимое (~/.claude и соседи), самого каталога нет.
+  # Печатать их как ни в чём не бывало — вводить человека в заблуждение,
+  # поэтому внутри контейнера честно говорим, что проверка не отсюда.
+  # Хост от контейнера отличаем писабельностью клона, как в host_only.
+  if [ -w "$PLATFORM_ROOT" ]; then
+    command -v docker >/dev/null 2>&1 && echo "docker:     $(docker --version | cut -d, -f1)" || { echo "docker:     НЕТ — нужен для devcontainer"; ok=0; }
+    docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 && echo "образ:      $IMAGE_TAG есть (key $(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null), нужен $(image_key))" || echo "образ:      нет (соберётся при первом контейнере или: ai-devcontainer ensure-image)"
+    if [ -d "$HOME/.ai-devcontainer-dev" ]; then
+      local n; n="$(find "$HOME/.ai-devcontainer-dev" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+      echo "персист:    ~/.ai-devcontainer-dev есть (проектов: $n; каталоги per-project, создаёт ai-devcontainer prepare)"
+    else
+      echo "персист:    ~/.ai-devcontainer-dev нет (создастся при первом проекте)"
+    fi
+  else
+    echo "образ:      проверяется только на хосте (здесь docker — внутренний демон контейнера)"
+    echo "персист:    проверяется только на хосте (~/.ai-devcontainer-dev — хостовый путь)"
+  fi
+  if [ -d "$PLATFORM_ROOT/skills" ]; then
+    echo "скиллы:     $(find "$PLATFORM_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) на платформе (проектные форки: ai-devcontainer skill status)"
+  else
+    echo "скиллы:     НЕТ $PLATFORM_ROOT/skills — платформа не обновлена?"; ok=0
+  fi
+  if [ -f "$PLATFORM_ROOT/mcp/servers.json" ] && command -v jq >/dev/null 2>&1; then
+    echo "MCP:        $(jq -r '.mcpServers | length' "$PLATFORM_ROOT/mcp/servers.json") сервер(ов) на платформе (роздано в проекте: ai-devcontainer mcp list)"
+  else
+    echo "MCP:        нет $PLATFORM_ROOT/mcp/servers.json — платформа не обновлена?"
+  fi
+  if [ -d "$PLATFORM_ROOT/skeleton" ]; then
+    echo "скаффолды:  $(list_scaffold_types | paste -sd, -) (ai-devcontainer new --type <тип>)"
+  else
+    echo "скаффолды:  НЕТ $PLATFORM_ROOT/skeleton — платформа не обновлена?"; ok=0
+  fi
+  command -v rsync >/dev/null 2>&1 || warn "rsync не найден — new будет копировать через cp (медленнее чистит)"
+  check_project_devcontainer || ok=0
+  [ "$ok" = 1 ] && log "Всё на месте" || warn "есть замечания выше"
+}
+
+case "${1:-help}" in
+  new)          shift; cmd_new "$@";;
+  ensure-image) cmd_ensure_image;;
+  update)       cmd_update;;
+  doctor)       cmd_doctor;;
+  skill)        shift; cmd_skill "$@";;
+  mcp)          shift; cmd_mcp "$@";;
+  plans)        shift; cmd_plans "$@";;
+  sync)         shift; cmd_sync "$@";;
+  prepare)      shift; cmd_prepare "$@";;
+  help|--help|-h)
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//';;
+  *) err "Неизвестная команда: $1 (см. ai-devcontainer help)"; exit 1;;
+esac

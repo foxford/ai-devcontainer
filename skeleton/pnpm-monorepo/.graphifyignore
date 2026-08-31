@@ -1,0 +1,62 @@
+# .graphifyignore — что graphify НЕ индексирует в knowledge graph.
+# Синтаксис .gitignore: globs, !-негация, last-match-wins, / — якорь к корню.
+#
+# В графе держим ТОЛЬКО исходный код проекта — включая тесты и конфиги,
+# они полезны агентам. Исключаем вендор, артефакты сборки, кэши, логи, временное.
+#
+# ВАЖНО: пока этот файл существует, graphify в корне НЕ читает .gitignore как
+# fallback. Поэтому артефакты/кэши перечислены здесь явно, а не наследуются.
+# (build/dist/node_modules/coverage/.turbo graphify исключает и сам, но дублируем
+#  для наглядности и независимости от его внутренних дефолтов.)
+#
+# Файл копируется из скелета и принадлежит проекту — дополняй под себя
+# (свои генерируемые каталоги, дампы данных, фикстуры).
+
+# ── Вендор и минификация (не наш код) ──
+*.min.js
+*.min.mjs
+*.min.css
+*.bundle.js
+*.map
+public/
+vendor/
+
+# ── Артефакты сборки ──
+build/
+dist/
+dist-protected/
+out/
+.output/
+storybook-static/
+.next/
+.docusaurus/
+
+# ── Кэши ──
+node_modules/
+.nx/
+.turbo/
+.cache/
+coverage/
+.eslintcache
+*.tsbuildinfo
+
+# ── Временное и логи ──
+tmp/
+.tmp/
+logs/
+*.log
+
+# ── Генерируемое ──
+generated/
+__generated__/
+
+# ── Агентский тулинг и песочницы (не исходный код проекта) ──
+.hermes/
+.claude/
+.codex/
+.gemini/
+.agents/
+.impeccable/
+
+# ── Выхлоп самого graphify ──
+graphify-out/

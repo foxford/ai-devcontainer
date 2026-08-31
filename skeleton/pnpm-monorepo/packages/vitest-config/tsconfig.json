@@ -1,0 +1,5 @@
+{
+  "extends": "@foxford/typescript-config/tsconfig.base.json",
+  "include": ["src"],
+  "exclude": ["node_modules", "build"]
+}

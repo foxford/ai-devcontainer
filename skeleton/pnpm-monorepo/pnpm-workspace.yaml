@@ -1,0 +1,50 @@
+packages:
+  # executable/launchable applications
+  - 'apps/*'
+  # пакеты монорепы (включая платформенные @foxford/*-config — они часть репо)
+  - 'packages/*'
+
+# Каталоги версий — единая точка правды (перенесены из проверенного продакшн-монорепо).
+catalogs:
+  linter:
+    eslint: ^9.0.0
+    '@eslint/js': ^9.0.0
+    typescript-eslint: ^8.0.0
+    eslint-plugin-react: ^7.0.0
+    eslint-plugin-react-hooks: ^7.0.0
+    eslint-plugin-jsx-a11y: ^6.0.0
+    eslint-plugin-import-x: ^4.16.1
+    eslint-plugin-n: ^17.0.0
+    eslint-plugin-prettier: ^5.5.5
+    eslint-config-prettier: ^10.0.0
+    globals: ^17.0.0
+    eslint-plugin-formatjs: ^6.0.0
+    eslint-import-resolver-typescript: ^4.0.0
+  react:
+    react: ^19.2.4
+    react-dom: ^19.2.4
+    '@types/react': ^19.2.9
+    '@types/react-dom': ^19.2.3
+  dev:
+    glob: ^13.0.6
+    typescript: ^5.9.3
+    zx: ^8.8.5
+    tsup: ^8.5.1
+    fs-extra: ^11.3.3
+    vitest: ^4.1.9
+    vite: ^7.3.6
+    '@vitest/coverage-istanbul': ^4.1.9
+    jsdom: ^28.1.0
+    '@vitejs/plugin-react': ^5.0.2
+    '@types/node': ^24.11.0
+    '@types/fs-extra': ^11.0.4
+    tsx: ^4.23.0
+    '@playwright/test': ^1.62.1
+  cli:
+    commander: ^13.1.0
+    cli-progress: ^3.12.0
+    cli-table3: ^0.6.5
+    '@types/cli-progress': ^3.11.6
+
+onlyBuiltDependencies:
+  - nx

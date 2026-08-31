@@ -1,0 +1,62 @@
+import fs from 'fs'
+import path from 'path'
+
+import { defineConfig } from 'tsup'
+
+export default defineConfig({
+  bundle: true,
+  clean: true,
+  dts: true,
+  entry: ['src/index.ts'],
+  format: ['cjs', 'esm'],
+  async onSuccess() {
+    await fs.promises.copyFile('README.mdx', path.join('build', 'README.mdx'))
+    const packageJson = JSON.parse(await fs.promises.readFile('package.json', 'utf-8'))
+
+    // Здесь вы можете внести необходимые изменения в объект packageJson
+    if ('devDependencies' in packageJson) delete packageJson.devDependencies
+    if ('dependencies' in packageJson) {
+      delete packageJson.dependencies['react']
+      delete packageJson.dependencies['react-dom']
+    }
+    if ('scripts' in packageJson) delete packageJson.scripts
+    if ('exports' in packageJson) delete packageJson.exports
+    if ('main' in packageJson) delete packageJson.main
+    if ('module' in packageJson) delete packageJson.module
+    if ('types' in packageJson) delete packageJson.types
+    if ('prettier' in packageJson) delete packageJson.prettier
+
+    packageJson.main = './index.js'
+    packageJson.module = './index.mjs'
+    packageJson.exports = {
+      '.': {
+        import: './index.mjs',
+        require: './index.js',
+        types: './index.d.ts',
+      },
+    }
+
+    await fs.promises.writeFile(path.join('build', 'package.json'), JSON.stringify(packageJson, null, 2))
+  },
+  outDir: 'build',
+  sourcemap: false,
+  splitting: false,
+})
+
+function updatePackageJsonFiles() {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync('build/package.json', 'utf-8'))
+    const files = fs.readdirSync('build')
+    packageJson.files = files.filter((file) => file !== '.tsbuildinfo')
+    fs.writeFileSync(path.join('build', 'package.json'), JSON.stringify(packageJson, null, 2))
+  } catch (err) {
+    console.error('Error updating package.json files:', err)
+  }
+}
+
+process.on('beforeExit', (code) => {
+  if (code === 0) {
+    updatePackageJsonFiles()
+    console.log('Build completed successfully!')
+  }
+})

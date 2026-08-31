@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "npmScope": "foxford",
+  "workspaceLayout": {
+    "appsDir": "apps",
+    "libsDir": "packages"
+  },
+  "targetDefaults": {
+    "build": {
+      "outputs": ["{projectRoot}/build"],
+      "cache": true
+    },
+    "lint:eslint": {
+      "outputs": ["{projectRoot}/.eslintcache"],
+      "cache": true
+    },
+    "lint:type-check": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "dev": {
+      "dependsOn": ["^build"]
+    }
+  },
+  "defaultBase": "main"
+}

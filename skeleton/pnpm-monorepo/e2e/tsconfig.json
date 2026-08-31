@@ -1,0 +1,25 @@
+{
+  // Отдельный tsconfig, потому что e2e — не пакет монорепы: своего project.json
+  // у него нет, и nx-таргет lint:type-check его не увидит. Проверяется отдельной
+  // командой из корня: `pnpm run e2e:type-check`.
+  //
+  // Нужен не для галочки: playwright прогоняет спеки через esbuild, который
+  // типы не проверяет вообще — без этого шага ошибка типизации всплывёт
+  // только в рантайме теста.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+
+    // Два переопределения ниже — из-за того, что пресет платформы построен на
+    // ${configDir}, а он для ЭТОГО файла равен e2e/, а не корню репозитория:
+    //   • typeRoots смотрел бы в несуществующий e2e/node_modules/@types
+    //     → "Cannot find type definition file for 'node'";
+    //   • rootDir был бы e2e/, и playwright.config.ts из корня в него не влез бы.
+    // У пакетов монорепы такого нет: там конфиг лежит в корне пакета.
+    "typeRoots": ["../node_modules/@types"],
+    "rootDir": "..",
+    "types": ["node"]
+  },
+  // Конфиг раннера тоже проверяем: опечатка в нём ломает весь прогон.
+  "include": ["**/*.ts", "../playwright.config.ts"]
+}

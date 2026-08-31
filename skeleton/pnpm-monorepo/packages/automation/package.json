@@ -1,0 +1,30 @@
+{
+  "name": "@foxford/automation",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "============================ BUILD =============================": "",
+    "build": "echo \"No build specified\" && exit 0",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "tsc --noEmit --pretty",
+    "lint:eslint": "eslint --cache --cache-strategy content --max-warnings=0 ./",
+    "============================ TEST =============================": "",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "generators": "./generators.json",
+  "devDependencies": {
+    "@foxford/eslint-config": "workspace:*",
+    "@foxford/prettier-config": "workspace:*",
+    "@foxford/typescript-config": "workspace:*",
+    "@foxford/vitest-config": "workspace:*",
+    "@nx/devkit": "21.6.2",
+    "@types/node": "catalog:dev",
+    "jsonc-eslint-parser": "3.1.0",
+    "tslib": "2.8.1",
+    "vitest": "catalog:dev"
+  }
+}

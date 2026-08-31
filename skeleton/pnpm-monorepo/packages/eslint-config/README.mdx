@@ -1,0 +1,65 @@
+## @foxford/eslint-config
+
+ESLint конфиг для пакетов платформы.
+
+## Точки входа
+
+| Экспорт | Назначение |
+|---------|-----------|
+| `@foxford/eslint-config` | JS + TS (без React, без Node) |
+| `@foxford/eslint-config/react` | JS + TS + React |
+| `@foxford/eslint-config/node` | JS + TS + Node.js |
+| `@foxford/eslint-config/react-node` | JS + TS + React + Node.js |
+
+## Использование
+
+Создайте файл `eslint.config.mjs` в корне пакета:
+
+### Браузер без React
+
+```js
+import config from '@foxford/eslint-config'
+
+export default config
+```
+
+### Браузер с React
+
+```js
+import config from '@foxford/eslint-config/react'
+
+export default config
+```
+
+### Node.js
+
+```js
+import config from '@foxford/eslint-config/node'
+
+export default config
+```
+
+### React + Node.js (SSR, Next.js и т.д.)
+
+```js
+import config from '@foxford/eslint-config/react-node'
+
+export default config
+```
+
+### Расширение конфигурации
+
+Flat Config — это массив, поэтому можно добавлять слои:
+
+```js
+import config from '@foxford/eslint-config/react'
+
+export default [
+  ...config,
+  {
+    rules: {
+      'no-console': 'error',
+    },
+  },
+]
+```

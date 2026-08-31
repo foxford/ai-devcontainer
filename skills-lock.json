@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "skills": {
+    "brandkit": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/brandkit/SKILL.md",
+      "computedHash": "b63012f3c3d21197e0185d3e9cc7ec40c589fb10e0b5a32a561739de31aa3f20"
+    },
+    "dependency-auditor": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering/skills/dependency-auditor/SKILL.md",
+      "computedHash": "a31ab1d908eb2780729b717f9c9d937aae6afc19d18b6409cae7ba0203582747"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "6d838b246d0e35d0b53f4f23f98ba7a1dd561937e64f7d0c7553b0928e376c3e",
+      "localOverride": "рамка платформы foxford вставлена в тело скилла (маркеры ai-devcontainer:override) + переписан description. Переимпорт из source затрёт правку — см. AGENTS.md, секция «Скиллы»."
+    },
+    "humanizer": {
+      "source": "blader/humanizer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "b8ffeef32edeeb4adf4e1598cbc1be5c2f2cb32b377739a813bb27ba6824b28c"
+    },
+    "playwright-pro": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/playwright-pro/skills/pw/SKILL.md",
+      "computedHash": "65857406b8b8b6ce1a5237484d287e9b63d6fad4a0484464b325725cbb8a2423"
+    },
+    "redesign-existing-projects": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/redesign-skill/SKILL.md",
+      "computedHash": "b405eee0e0e80fc243f731d9aa368bca307e356db7e6157d27101d369dac6726",
+      "localOverride": "рамка платформы foxford вставлена в тело скилла (маркеры ai-devcontainer:override) + переписан description. Переимпорт из source затрёт правку — см. AGENTS.md, секция «Скиллы»."
+    },
+    "senior-architect": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-architect/SKILL.md",
+      "computedHash": "0152c1cb90512177153d936557a11bf760d5cbd21470a1305cc727d0a3af1df9"
+    },
+    "senior-backend": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-backend/SKILL.md",
+      "computedHash": "45228f6f893be2bbfcea6be09a7f3fb847635e828a31860a4fd810dbdd26ec0d"
+    },
+    "senior-frontend": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-frontend/SKILL.md",
+      "computedHash": "c4845ae10ab5e18b1a6bcfd19067e17545108ee87700f89fd5ea07811ad5096a",
+      "localOverride": "рамка платформы foxford вставлена в тело скилла (маркеры ai-devcontainer:override) + переписан description. Переимпорт из source затрёт правку — см. AGENTS.md, секция «Скиллы»."
+    },
+    "senior-fullstack": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-fullstack/SKILL.md",
+      "computedHash": "dd76adf15ea122eecf565b23755950c1c8bb8538362277feace0e12f7e4e0c06"
+    },
+    "senior-qa": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-qa/SKILL.md",
+      "computedHash": "c0ac7af49990f8c82552c3685c3e0fced9747a601ac238625e72761ca81d03df"
+    },
+    "senior-secops": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-secops/SKILL.md",
+      "computedHash": "ae0a60777ec6a1106495eee40e1a814ed55bfdc2767b440ecd5614e42e6c46c9"
+    },
+    "senior-security": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-security/SKILL.md",
+      "computedHash": "815e7e7540d386358d51515e111a9897fc00bd2d5c907a6e91d1dad482010291"
+    },
+    "stitch-design-taste": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/stitch-skill/SKILL.md",
+      "computedHash": "13322f38406cd3abf16ba45e35bdc9b18002d0153a79b4612b97aefc65d5a335",
+      "localOverride": "рамка платформы foxford вставлена в тело скилла (маркеры ai-devcontainer:override) + переписан description. Переимпорт из source затрёт правку — см. AGENTS.md, секция «Скиллы»."
+    }
+  }
+}

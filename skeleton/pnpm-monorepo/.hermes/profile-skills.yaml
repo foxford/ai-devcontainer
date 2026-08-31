@@ -1,0 +1,17 @@
+# Allow-list технических скиллов по ролям Hermes — ИСТОЧНИК ПРАВДЫ для bootstrap.
+#
+# Семантика: перечисленное = ВКЛЮЧЕНО для роли. Всё остальное, что есть на машине,
+# bootstrap ВЫКЛЮЧАЕТ (пишет в skills.disabled профиля).
+#
+# Сид одноразовый: bootstrap применяет этот файл только если у профиля ещё нет
+# маркера skills.foxford_seed. Дальше разработчик правит живьём через дашборд
+# profile-skills — повторный bootstrap его НЕ перетирает. Чтобы поменять базлайн
+# для всей команды — правь этот файл (и попроси коллег убрать маркер/профиль для пересида).
+
+profiles:
+  team-lead: [dependency-auditor, playwright-pro, senior-fullstack, senior-secops]
+  tech-lead: [changesets, dependency-auditor, excalidraw, nx-monorepo, obsidian, playwright-pro, senior-architect, senior-backend, senior-frontend, senior-fullstack, senior-qa, senior-secops, senior-security, typescript-strict]
+  developer: [changesets, claude-design, codebase-inspection, dependency-auditor, eslint-config-authoring, excalidraw, humanizer, mermaid-diagrams, nx-monorepo, obsidian, package-scaffold, playwright-pro, pnpm-workspaces, senior-frontend, senior-fullstack, senior-secops, tsup-bundling, typescript-strict, vitest-testing]
+  qa: [dependency-auditor, playwright-pro, senior-qa, senior-secops]
+  documenter: [excalidraw, humanizer, mermaid-diagrams, senior-secops]
+  security-auditor: [dependency-auditor, senior-secops, senior-security]

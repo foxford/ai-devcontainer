@@ -1,0 +1,3 @@
+{
+  "extends": "@foxford/typescript-config/tsconfig.base.json"
+}

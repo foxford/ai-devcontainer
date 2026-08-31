@@ -1,0 +1,422 @@
+name: clean-webui
+label: Clean WebUI
+description: Plain white web-app theme with black text, blue accents, normal-case sans-serif typography, and wrapping Kanban columns.
+
+palette:
+  background:
+    hex: '#ffffff'
+    alpha: 1.0
+  midground:
+    hex: '#111827'
+    alpha: 1.0
+  foreground:
+    hex: '#2563eb'
+    alpha: 0.0
+  warmGlow: 'rgba(255, 255, 255, 0)'
+  noiseOpacity: 0
+
+typography:
+  fontSans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  fontMono: '"JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
+  fontDisplay: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  fontUrl: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap'
+  baseSize: '16px'
+  lineHeight: '1.55'
+  letterSpacing: '0'
+
+layout:
+  radius: '0.5rem'
+  density: compact
+
+assets:
+  bg: 'none'
+
+colorOverrides:
+  card: '#ffffff'
+  cardForeground: '#111827'
+  popover: '#ffffff'
+  popoverForeground: '#111827'
+  primary: '#2563eb'
+  primaryForeground: '#ffffff'
+  secondary: '#f3f4f6'
+  secondaryForeground: '#111827'
+  muted: '#f3f4f6'
+  mutedForeground: '#6b7280'
+  accent: '#dbeafe'
+  accentForeground: '#1d4ed8'
+  border: '#d1d5db'
+  input: '#d1d5db'
+  ring: '#2563eb'
+
+componentStyles:
+  card:
+    background: '#ffffff'
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.08)'
+  header:
+    background: '#ffffff'
+    borderBottom: '1px solid #e5e7eb'
+  backdrop:
+    background: '#ffffff'
+    fillerOpacity: '0'
+    fillerBlendMode: 'normal'
+    backgroundSize: 'auto'
+    backgroundPosition: 'center'
+
+customCSS: |
+  /* Plain white application canvas: remove the branded backdrop, glow, gradients, grain, and filler image. */
+  :root {
+    --background: #ffffff !important;
+    --background-base: #ffffff !important;
+    --midground: #111827 !important;
+    --midground-base: #111827 !important;
+    --foreground: #111827 !important;
+    --foreground-base: #111827 !important;
+    --color-foreground: #111827 !important;
+    --color-card: #ffffff !important;
+    --color-card-foreground: #111827 !important;
+    --color-popover: #ffffff !important;
+    --color-popover-foreground: #111827 !important;
+    --color-primary: #2563eb !important;
+    --color-primary-foreground: #ffffff !important;
+    --color-accent: #dbeafe !important;
+    --color-accent-foreground: #1d4ed8 !important;
+    --color-ring: #2563eb !important;
+    --warm-glow: rgba(255, 255, 255, 0) !important;
+    --noise-opacity-mul: 0 !important;
+    --theme-asset-bg: none !important;
+    --component-backdrop-filler-opacity: 0 !important;
+    --component-backdrop-filler-blend-mode: normal !important;
+
+    /* Wire the design-system --border HSL variable so Tailwind's
+       border-border utility actually renders the theme's border color
+       instead of a faint midground-derived shade. */
+    --border: 214 32% 84% !important;
+  }
+
+  /* Make every Tailwind border-border element use --color-border
+     directly, bypassing the HSL-derived approach that ignores overrides. */
+  .border-border {
+    border-color: var(--color-border) !important;
+  }
+
+  /* Give the sidebar a subtle background so it visually separates
+     from the content area. */
+  #app-sidebar {
+    background: #f9fafb !important;
+    background-color: #f9fafb !important;
+  }
+
+  #app-sidebar > div:first-child {
+    min-height: 3.5rem;
+  }
+
+  #app-sidebar > div:first-child * {
+    mix-blend-mode: normal!important;
+  }
+
+  /* Bump sidebar nav links to medium weight for better scanability. */
+  #app-sidebar nav a {
+    font-weight: 500 !important;
+  }
+
+  /* Improve heading hierarchy: page title should stand out from body. */
+  h1 {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+  }
+
+  h3 {
+    font-weight: 600 !important;
+  }
+
+  html,
+  body,
+  #root,
+  #root > div {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #111827 !important;
+  }
+
+  /* The app shell has Tailwind's bg-black class by default; override it for this light theme. */
+  #root > div.bg-black,
+  #root > div[class*="bg-black"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  body::before,
+  body::after,
+  #root::before,
+  #root::after {
+    background: none !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide only the dashboard's non-interactive fixed backdrop layers.
+     Avoid broad class-name matching here because real header/sidebar elements use
+     Tailwind backdrop-blur utilities and must remain visible after the theme loads. */
+  .pointer-events-none.fixed.inset-0[aria-hidden="true"] {
+    display: none !important;
+    opacity: 0 !important;
+    background: none !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  .theme-default-filler,
+  img.theme-default-filler {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  /* Force normal sans-serif UI fonts. The default dashboard components use branded serif/display fonts. */
+  *:not(code):not(kbd):not(pre):not(samp):not(.font-mono):not(.font-mono-ui):not(.xterm *):not(.xterm) {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono,
+  .font-mono-ui {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace !important;
+  }
+
+  /* Disable the default all-caps treatment and wide tracking across controls/headings. */
+  .uppercase,
+  [class*="uppercase"],
+  [class*="tracking-"] {
+    text-transform: none !important;
+    letter-spacing: normal !important;
+  }
+
+  /* Keep ordinary links blue. */
+  a {
+    color: #2563eb;
+  }
+
+  /* Safety net for the light theme: never leave white text sitting on the
+     white canvas. White text is allowed only inside the blue selected/action
+     surfaces defined below. Everything else falls back to dark gray. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  label,
+  p,
+  li,
+  dt,
+  dd,
+  th,
+  td,
+  [class~="text-white"]:not(.xterm):not(.xterm *),
+  [class*="text-white/"]:not(.xterm):not(.xterm *),
+  [class~="text-background"]:not(.xterm):not(.xterm *),
+  [class*="text-background/"]:not(.xterm):not(.xterm *),
+  [class~="text-primary-foreground"]:not(.xterm):not(.xterm *),
+  [class*="text-primary-foreground/"]:not(.xterm):not(.xterm *) {
+    color: #374151 !important;
+  }
+
+  [class~="text-muted-foreground"],
+  [class*="text-muted-foreground/"],
+  [class~="text-neutral-50"],
+  [class~="text-zinc-50"],
+  [class~="text-slate-50"],
+  [class~="text-stone-50"],
+  [class~="text-gray-50"] {
+    color: #6b7280 !important;
+  }
+
+  svg[class~="text-white"]:not(.xterm *),
+  [class~="text-white"] svg:not(.xterm *),
+  [class*="text-white/"] svg:not(.xterm *) {
+    color: #6b7280 !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  /* Blue surfaces are the only places where white type is intentional. Use
+     medium/dark blue tokens only; pale blue tags/chips still get gray text. */
+  [class~="bg-primary"],
+  [class~="bg-blue-500"],
+  [class~="bg-blue-600"],
+  [class~="bg-blue-700"],
+  [class~="bg-blue-800"],
+  [class~="bg-blue-900"],
+  [style*="background: #2563eb"],
+  [style*="background-color: #2563eb"],
+  [style*="background: rgb(37, 99, 235)"],
+  [style*="background-color: rgb(37, 99, 235)"] {
+    color: #ffffff !important;
+  }
+
+  [class~="bg-primary"] *,
+  [class~="bg-blue-500"] *,
+  [class~="bg-blue-600"] *,
+  [class~="bg-blue-700"] *,
+  [class~="bg-blue-800"] *,
+  [class~="bg-blue-900"] *,
+  [style*="background: #2563eb"] *,
+  [style*="background-color: #2563eb"] *,
+  [style*="background: rgb(37, 99, 235)"] *,
+  [style*="background-color: rgb(37, 99, 235)"] * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+
+  /* Solid/action buttons: the default design-system primary button uses an
+     exact bg-midground token. Do NOT match bg-midground/15, because those are
+     unselected filter chips on pages like Logs. Selected/current buttons are
+     handled separately below. */
+  button[class~="bg-black"]:not(.fixed),
+  button[class~="bg-midground"]:not(.fixed),
+  button[class~="bg-foreground"]:not(.fixed),
+  button[class~="bg-current"]:not(.fixed),
+  [role="button"][class~="bg-black"]:not(.fixed),
+  [role="button"][class~="bg-midground"]:not(.fixed),
+  [role="button"][class~="bg-foreground"]:not(.fixed),
+  [role="button"][class~="bg-current"]:not(.fixed),
+  input[type="button"][class~="bg-midground"],
+  input[type="submit"][class~="bg-midground"],
+  button[style*="background: black"]:not(.fixed),
+  button[style*="background-color: black"]:not(.fixed),
+  button[style*="background: #000"]:not(.fixed),
+  button[style*="background-color: #000"]:not(.fixed),
+  button[aria-current="page"],
+  button[aria-selected="true"],
+  button[aria-pressed="true"],
+  button[data-state="active"],
+  button[data-active="true"],
+  [role="button"][aria-current="page"],
+  [role="button"][aria-selected="true"],
+  [role="button"][aria-pressed="true"],
+  [role="button"][data-state="active"],
+  [role="button"][data-active="true"] {
+    background: #2563eb !important;
+    background-color: #2563eb !important;
+    background-image: none !important;
+    color: #ffffff !important;
+    border-color: #2563eb !important;
+  }
+
+  button[class~="bg-black"]:not(.fixed) *,
+  button[class~="bg-midground"]:not(.fixed) *,
+  button[class~="bg-foreground"]:not(.fixed) *,
+  button[class~="bg-current"]:not(.fixed) *,
+  [role="button"][class~="bg-black"]:not(.fixed) *,
+  [role="button"][class~="bg-midground"]:not(.fixed) *,
+  [role="button"][class~="bg-foreground"]:not(.fixed) *,
+  [role="button"][class~="bg-current"]:not(.fixed) *,
+  button[aria-current="page"] *,
+  button[aria-selected="true"] *,
+  button[aria-pressed="true"] *,
+  button[data-state="active"] *,
+  button[data-active="true"] *,
+  [role="button"][aria-current="page"] *,
+  [role="button"][aria-selected="true"] *,
+  [role="button"][aria-pressed="true"] *,
+  [role="button"][data-state="active"] *,
+  [role="button"][data-active="true"] * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+
+  /* Sidebar navigation: unselected options should be fully opaque. The current
+     option is reverse-video: white text on a rounded blue rectangle. */
+  #app-sidebar nav a,
+  #app-sidebar nav a.opacity-60,
+  #app-sidebar nav a[class*="opacity-"] {
+    opacity: 1 !important;
+    color: #111827 !important;
+    border-radius: 0.5rem !important;
+    margin: 0.1rem 0.5rem !important;
+  }
+
+  #app-sidebar nav a svg,
+  #app-sidebar nav a span {
+    color: inherit !important;
+  }
+
+  #app-sidebar nav a[aria-current="page"] {
+    background: #2563eb !important;
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+    opacity: 1 !important;
+  }
+
+  #app-sidebar nav a[aria-current="page"] svg,
+  #app-sidebar nav a[aria-current="page"] span {
+    color: #ffffff !important;
+  }
+
+  #app-sidebar nav a[aria-current="page"] > span[aria-hidden="true"] {
+    display: none !important;
+  }
+
+  /* Sidebar/navigation: make all options easier to read. */
+  #app-sidebar nav a,
+  #app-sidebar nav a span,
+  #app-sidebar [role="group"] a,
+  #app-sidebar [role="group"] a span,
+  #app-sidebar li [role="button"],
+  #app-sidebar li [role="button"] span,
+  #app-sidebar li button,
+  #app-sidebar li button span {
+    font-size: 1rem !important;
+    line-height: 1.35 !important;
+  }
+
+  #app-sidebar nav a,
+  #app-sidebar li [role="button"],
+  #app-sidebar li button {
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.65rem !important;
+  }
+
+  #app-sidebar nav svg,
+  #app-sidebar li svg {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+
+  #app-sidebar [id="hermes-sidebar-plugin-nav-heading"],
+  #app-sidebar > div > span,
+  #app-sidebar [class*="text-[0.6rem]"] {
+    font-size: 0.85rem !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Kanban: wrap columns instead of one horizontally-scrolled/cropped row. */
+  .hermes-kanban-columns {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+    overflow-x: visible !important;
+    scrollbar-width: auto !important;
+    gap: 0.75rem !important;
+  }
+
+  .hermes-kanban-column {
+    flex: 1 1 280px !important;
+    min-width: 260px !important;
+    max-width: 420px !important;
+    max-height: none !important;
+  }
+
+  @media (max-width: 720px) {
+    .hermes-kanban-column {
+      flex-basis: 100% !important;
+      max-width: none !important;
+    }
+  }

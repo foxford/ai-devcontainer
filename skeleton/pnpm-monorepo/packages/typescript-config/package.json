@@ -1,0 +1,34 @@
+{
+  "name": "@foxford/typescript-config",
+  "version": "0.1.0",
+  "description": "Typescript configuration for foxford projects",
+  "keywords": [
+    "typescript"
+  ],
+  "license": "MIT",
+  "main": "./tsconfig.base.json",
+  "exports": {
+    "./README.mdx": "./README.mdx",
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    ".": "./tsconfig.base.json"
+  },
+  "scripts": {
+    "============================ BUILD =============================": "",
+    "build": "echo \"No build specified\" && exit 0",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "echo \"No type-check specified\" && exit 0",
+    "lint:eslint": "echo \"No lint specified\" && exit 0",
+    "============================ TEST =============================": "",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@foxford/vitest-config": "workspace:*",
+    "vitest": "catalog:dev",
+    "typescript": "catalog:dev"
+  },
+  "files": [
+    "tsconfig.base.json",
+    "README.mdx"
+  ]
+}

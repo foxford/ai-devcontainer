@@ -1,0 +1,40 @@
+{
+  "name": "@foxford/hermes-process",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Всё для Hermes-пайплайна в одном пакете: Node state machine (Kanban pipeline) + плагин дашборда profile-skills. Собирается tsup в единый dist/, устанавливается через .hermes/bootstrap.sh.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./build/state-machine/index.js",
+  "scripts": {
+    "============================ DEV =============================": "",
+    "dev": "tsx watch src/state-machine/index.ts",
+    "start": "node build/state-machine/index.js",
+    "============================ BUILD =============================": "",
+    "build": "rm -rf build && tsup",
+    "clean": "rm -rf build",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "tsc --noEmit --pretty",
+    "lint:eslint": "eslint --cache --cache-strategy content --max-warnings=0 ./",
+    "============================ TEST =============================": "",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@foxford/eslint-config": "workspace:*",
+    "@foxford/prettier-config": "workspace:*",
+    "@foxford/typescript-config": "workspace:*",
+    "@foxford/vitest-config": "workspace:*",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "catalog:dev",
+    "@types/react": "catalog:react",
+    "tsup": "catalog:dev",
+    "tsx": "catalog:dev",
+    "vitest": "catalog:dev"
+  }
+}

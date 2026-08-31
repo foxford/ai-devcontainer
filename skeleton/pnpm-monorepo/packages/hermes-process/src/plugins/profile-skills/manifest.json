@@ -1,0 +1,11 @@
+{
+  "name": "profile-skills",
+  "label": "Profile Skills",
+  "description": "Включение/выключение отдельных скиллов для каждого профиля Hermes — вместо того чтобы каждый профиль наследовал полный набор установленных скиллов.",
+  "icon": "SlidersHorizontal",
+  "version": "0.1.0",
+  "tab": { "path": "/profile-skills", "position": "after:skills" },
+  "slots": [],
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

@@ -1,0 +1,7 @@
+{
+  // Базовый tsconfig монорепы — наследует строгий пресет платформы
+  // (@foxford/typescript-config: strict, verbatimModuleSyntax, alias ~/* → src/*).
+  // Пакеты наследуют уже ЭТОТ файл:
+  //   { "extends": "../../tsconfig.base.json", "compilerOptions": { "outDir": "dist" } }
+  "extends": "@foxford/typescript-config/tsconfig.base.json"
+}

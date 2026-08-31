@@ -1,0 +1,39 @@
+{
+  "name": "@foxford/vitest-config",
+  "version": "0.1.0",
+  "description": "Package vitest-config",
+  "keywords": [],
+  "license": "MIT",
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "types": "src/index.d.ts",
+  "type": "module",
+  "exports": {
+    "./README.mdx": "./README.mdx",
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "============================ BUILD =============================": "",
+    "build": "echo \"No build specified\" && exit 0",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "tsc --noEmit --pretty",
+    "lint:eslint": "eslint --cache --cache-strategy content --max-warnings=0 ./",
+    "============================ TEST =============================": "",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@foxford/eslint-config": "workspace:*",
+    "@foxford/prettier-config": "workspace:*",
+    "@foxford/typescript-config": "workspace:*",
+    "@types/node": "catalog:dev",
+    "vitest": "catalog:dev"
+  },
+  "dependencies": {
+    "jsdom": "catalog:dev"
+  }
+}

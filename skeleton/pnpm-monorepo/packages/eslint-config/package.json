@@ -1,0 +1,51 @@
+{
+  "name": "@foxford/eslint-config",
+  "version": "0.1.0",
+  "description": "Foxford eslint config",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    "./README.mdx": "./README.mdx",
+    ".": "./index.js",
+    "./react": "./react.js",
+    "./node": "./node.js",
+    "./react-node": "./react-node.js"
+  },
+  "scripts": {
+    "============================ BUILD =============================": "",
+    "build": "echo \"No build specified\" && exit 0",
+    "============================ LINT =============================": "",
+    "lint:clean": "rm -f .eslintcache",
+    "lint:type-check": "tsc --noEmit --pretty",
+    "lint:eslint": "eslint --cache --cache-strategy content --max-warnings=0 ./",
+    "============================ TEST =============================": "",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:linter",
+    "eslint": "catalog:linter",
+    "eslint-config-prettier": "catalog:linter",
+    "eslint-import-resolver-node": "0.3.9",
+    "eslint-import-resolver-typescript": "catalog:linter",
+    "eslint-module-utils": "2.12.0",
+    "eslint-plugin-import-x": "catalog:linter",
+    "eslint-plugin-jsx-a11y": "catalog:linter",
+    "eslint-plugin-n": "catalog:linter",
+    "eslint-plugin-prettier": "catalog:linter",
+    "eslint-plugin-react": "catalog:linter",
+    "eslint-plugin-react-hooks": "catalog:linter",
+    "globals": "catalog:linter",
+    "is-glob": "4.0.3",
+    "minimatch": "10.2.3",
+    "natural-compare": "1.4.0",
+    "typescript-eslint": "catalog:linter"
+  },
+  "devDependencies": {
+    "@foxford/typescript-config": "workspace:*",
+    "@foxford/vitest-config": "workspace:*",
+    "@types/estree": "1.0.9",
+    "vitest": "catalog:dev"
+  }
+}

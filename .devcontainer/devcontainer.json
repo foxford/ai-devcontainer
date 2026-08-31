@@ -1,0 +1,82 @@
+{
+  // Девконтейнер самой ai-devcontainer: песочница для правок платформы и агентов.
+  "name": "ai-devcontainer",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "PROJECT_NAME": "ai-devcontainer"
+    }
+  },
+
+  // dind — чтобы ВНУТРИ песочницы тестировать сборку dev-base и проектных
+  // образов (ai-devcontainer ensure-image, docker build skeleton-проектов).
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "remoteUser": "node",
+  "containerUser": "node",
+
+  // 1) персист-каталоги проекта (иначе docker создаст их от root);
+  // 2) dev-base:local из РАБОЧЕЙ КОПИИ — правки Dockerfile платформы сразу
+  //    попадают в базу этого контейнера (не из ~/.local/share/ai-devcontainer).
+  "initializeCommand": "AI_DEVCONTAINER_HOME=\"$PWD\" bash bin/ai-devcontainer prepare",
+
+  "mounts": [
+    "source=${localEnv:HOME}/Development/@foxford/vgavani,target=/workspaces/vgavani,type=bind,consistency=cached",
+    
+    // Obsidian на хосте, мост через сокет (то же допущение, что в проектах)
+    "source=/tmp/obsidian-cli.sock,target=/run/obsidian.sock,type=bind",
+
+    // Персист per-project
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/claude,target=/home/node/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/opencode,target=/home/node/.config/opencode,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/codex,target=/home/node/.codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/hermes,target=/home/node/.hermes,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/dsh,target=/home/node/.dsh,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/uv,target=/home/node/.local/share/uv,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/history,target=/home/node/.history,type=bind,consistency=cached",
+
+    // Named volumes — общие с проектами
+    "source=platform-ai-tools,target=/opt/ai-tools,type=volume",
+    "source=platform-pnpm-store,target=/home/node/.pnpm-store,type=volume",
+    // Бинарь Claude Code (324 МБ): в /opt/ai-tools только лаунчер, сам бинарь
+    // здесь. Без volume он теряется на каждом rebuild и качается заново.
+    "source=platform-claude-versions,target=/home/node/.local/share/claude,type=volume",
+    // Браузеры Playwright — тот же volume, что у проектов: здесь гоняются
+    // e2e скелета (cd skeleton && pnpm run e2e), а без volume они
+    // перекачивались бы на каждый rebuild.
+    "source=platform-playwright-browsers,target=/home/node/.cache/ms-playwright,type=volume"
+  ],
+
+  // Свой post-create (НЕ tooling/post-create-setup.sh — тот рассчитан на
+  // проект из skeleton; здесь монорепа лежит в skeleton/, а скиллы для
+  // агентов, правящих платформу, — те же skeleton/.agents/skills).
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "files.watcherExclude": {
+          "**/node_modules/**": true,
+          "**/.nx/**": true,
+          "**/dist/**": true,
+          "**/build/**": true
+        },
+        "editor.tabSize": 2,
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "anthropic.claude-code",
+        "vitest.explorer",
+        "eamodio.gitlens",
+        "mikestead.dotenv",
+        "redhat.vscode-yaml",
+        "bierner.markdown-mermaid"
+      ]
+    }
+  }
+}
