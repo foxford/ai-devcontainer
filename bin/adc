@@ -316,6 +316,55 @@ check_from_resolves() {
 #
 # Поэтому проверка идёт лесенкой: резолв → мелкий HTTPS → крупный HTTPS.
 # Провалившаяся ступень и есть диагноз.
+#
+# Лесенка одна на оба режима, и гоняется она ВСЕГДА по-настоящему, запросами:
+# в контейнере — прямо здесь, на хосте — через `docker run` на dev-base, то
+# есть ровно тем путём, которым ходят девконтейнеры (тот же бридж, тот же MTU,
+# тот же резолвер). Сравнения MTU мало: оно ловит одну причину из трёх и молчит
+# про прокси, фаервол и мёртвый DNS.
+#
+# Диагноз кодируется кодом возврата — так он переживает границу docker run.
+NET_LADDER='
+  getent hosts registry.npmjs.org >/dev/null 2>&1 || exit 10
+  command -v curl >/dev/null 2>&1 || exit 40
+  curl -fsS -m 8  -o /dev/null https://api.github.com/zen || exit 20
+  curl -fsS -m 15 -o /dev/null https://registry.npmjs.org/typescript || exit 30
+'
+
+# $1 — код лесенки, $2 — MTU проверяемой стороны (для текста починки),
+# $3 — откуда гоняли (для строки результата).
+net_verdict() {
+  local code="$1" mtu="${2:-1500}" where="${3:-}"
+  case "$code" in
+    0)
+      echo "            запросы прошли${where:+ $where}: DNS, TLS и крупный ответ"
+      return 0 ;;
+    10)
+      err "DNS: registry.npmjs.org не резолвится — наружу не уходит ни один запрос"
+      echo "    Резолвер: cat /etc/resolv.conf${where:+ ($where)}" >&2
+      return 1 ;;
+    20)
+      err "TLS: api.github.com молчит 8 с — связи наружу нет"
+      echo "    Если в сети прокси — он должен быть виден и внутри контейнера" >&2
+      echo "    (HTTPS_PROXY/NO_PROXY), иначе туда не уйдёт ничего." >&2
+      return 1 ;;
+    30)
+      err "MTU: мелкий ответ прошёл, крупный завис на 15 с — режется по дороге"
+      echo "    Интерфейс держит MTU $mtu, а канал (VPN, вложенный docker) уже: пакет" >&2
+      echo "    с DF-битом дропается молча, и таймаутом кончается всё объёмное —" >&2
+      echo "    установка расширений VS Code, pnpm install, модели Copilot." >&2
+      echo "    Чинить на ХОСТЕ: /etc/docker/daemon.json → {\"mtu\": <MTU канала>}," >&2
+      echo "    перезапуск демона, Rebuild Container." >&2
+      return 1 ;;
+    40)
+      echo "            curl не найден — TLS и крупный ответ не проверить"
+      return 0 ;;
+    *)
+      warn "сеть: проверка не отработала (код $code) — считаю неизвестной"
+      return 0 ;;
+  esac
+}
+
 # MTU канала, по которому хост реально ходит наружу. Берём с интерфейса
 # дефолтного маршрута, а не с первого попавшегося: у ноутбука их полдюжины
 # (wifi, докер-бриджи, VPN-туннель), и важен ровно тот, через который уйдёт
@@ -354,14 +403,15 @@ docker_bridge_mtu() {
 # MTU больше, чем канал наружу. Тогда мелкое ходит, крупное дропается молча —
 # и это в равной мере вешает установку расширений VS Code, pnpm install и
 # запросы Copilot. Проверять дёшево, а вручную никто не догадается.
+# Хостовая половина: сначала сравнение MTU (оно называет ПРИЧИНУ и стоит
+# миллисекунды), потом настоящие запросы — но из контейнера, а не с хоста.
+# Хостовая сеть тут никого не интересует: ломается ровно путь контейнера.
 check_host_net() {
-  local up docker_mtu
+  local up docker_mtu code
   docker_mtu="$(docker_bridge_mtu)"
-  if ! up="$(host_uplink_mtu)"; then
-    echo "сеть:       docker bridge MTU $docker_mtu (MTU канала не определить на этой ОС)"
-    return 0
-  fi
-  if [ "$docker_mtu" -gt "$up" ]; then
+  up="$(host_uplink_mtu || true)"
+
+  if [ -n "$up" ] && [ "$docker_mtu" -gt "$up" ]; then
     err "сеть: docker раздаёт контейнерам MTU $docker_mtu, а канал наружу — $up"
     echo "    Крупные ответы в контейнерах будут висеть до таймаута (мелкие пройдут):" >&2
     echo "    установка расширений VS Code, pnpm install, запросы Copilot." >&2
@@ -369,42 +419,31 @@ check_host_net() {
     echo "    затем Rebuild Container." >&2
     return 1
   fi
-  echo "сеть:       docker bridge MTU $docker_mtu ≤ канал $up — контейнерам хватит"
+  echo "сеть:       docker bridge MTU $docker_mtu${up:+, канал $up}"
+
+  # Настоящая проверка — тем же путём, которым пойдёт девконтейнер.
+  if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+    echo "            запросы не гонял: нет $IMAGE_TAG (adc ensure-image)"
+    return 0
+  fi
+  code=0
+  docker run --rm "$IMAGE_TAG" sh -c "$NET_LADDER" >/dev/null 2>&1 || code=$?
+  if [ "$code" = 125 ] || [ "$code" = 126 ] || [ "$code" = 127 ]; then
+    echo "            запросы не гонял: docker run не поднялся (код $code)"
+    return 0
+  fi
+  net_verdict "$code" "$docker_mtu" "из контейнера"
 }
 
+# Контейнерная половина: та же лесенка, но прямо здесь — мы уже внутри.
 check_container_net() {
-  local mtu proxy
-  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null || true)"
+  local mtu proxy code
+  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null || echo 1500)"
   proxy="${HTTPS_PROXY:-${https_proxy:-}}"
-  echo "сеть:       eth0 MTU ${mtu:-?}${proxy:+, HTTPS_PROXY=$proxy}"
-
-  if ! getent hosts registry.npmjs.org >/dev/null 2>&1; then
-    err "DNS: registry.npmjs.org не резолвится — наружу не уходит ни один запрос"
-    echo "    Резолвер контейнера: cat /etc/resolv.conf" >&2
-    return 1
-  fi
-
-  command -v curl >/dev/null 2>&1 || { echo "            curl не найден — TLS и крупный ответ не проверить"; return 0; }
-
-  # Мелкий ответ проходит почти всегда — даже когда MTU обрезан.
-  if ! curl -fsS -m 10 -o /dev/null https://api.github.com/zen 2>/dev/null; then
-    err "TLS: api.github.com молчит 10 с — связи наружу нет"
-    [ -n "$proxy" ] && echo "    Задан прокси $proxy — проверь, что он доступен изнутри контейнера." >&2
-    return 1
-  fi
-
-  # А крупный — вот он и висит, когда MTU не тот.
-  if ! curl -fsS -m 25 -o /dev/null https://registry.npmjs.org/typescript 2>/dev/null; then
-    err "MTU: мелкий ответ прошёл, крупный завис на 25 с — режется по дороге"
-    echo "    eth0 держит MTU ${mtu:-1500}, а канал (VPN, вложенный docker) уже: пакет" >&2
-    echo "    с DF-битом дропается молча, и таймаутом кончается всё объёмное —" >&2
-    echo "    установка расширений VS Code, pnpm install, модели Copilot." >&2
-    echo "    Чинить на ХОСТЕ: /etc/docker/daemon.json → {\"mtu\": 1400}," >&2
-    echo "    перезапуск демона, Rebuild Container." >&2
-    return 1
-  fi
-
-  echo "            DNS, TLS и крупный ответ — все три прошли"
+  echo "сеть:       eth0 MTU $mtu${proxy:+, HTTPS_PROXY=$proxy}"
+  code=0
+  sh -c "$NET_LADDER" >/dev/null 2>&1 || code=$?
+  net_verdict "$code" "$mtu"
 }
 
 cmd_ensure_image() {

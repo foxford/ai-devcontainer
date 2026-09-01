@@ -198,6 +198,7 @@ mock_docker_with_bridge() {
   local key="$1" bridge_mtu="$2"
   cat > "$MOCK_BIN_DIR/docker" <<EOF
 #!/usr/bin/env bash
+echo "\$@" >> "$MOCK_CALLS_DIR/docker.log"
 case "\$1 \$2" in
   "image inspect")   echo "$key"; exit 0 ;;
   "buildx inspect")  echo "Driver: docker"; exit 0 ;;
@@ -221,8 +222,19 @@ EOF
   mock_ip eth0 1500
   mock_docker_with_bridge somekey 1500
   run_bin doctor
-  assert_output --partial "MTU 1500 ≤ канал 1500"
+  assert_output --partial "docker bridge MTU 1500, канал 1500"
   refute_output --partial "будут висеть"
+}
+
+# Сравнение MTU — не замена запросам: оно ловит одну причину из трёх. Поэтому
+# на хосте doctor обязан ещё и сходить наружу, и сходить ИЗ КОНТЕЙНЕРА.
+@test "doctor на хосте: сеть проверяется настоящими запросами из контейнера" {
+  mock_ip eth0 1500
+  mock_docker_with_bridge somekey 1500
+  run_bin doctor
+  assert_output --partial "запросы прошли из контейнера"
+  run cat "$MOCK_CALLS_DIR/docker.log"
+  assert_output --partial "run --rm dev-base:local"
 }
 
 @test "doctor на хосте: MTU канала не определить — говорит прямо, не гадает" {
@@ -231,7 +243,8 @@ EOF
   chmod +x "$MOCK_BIN_DIR/ip" "$MOCK_BIN_DIR/route"
   mock_docker_with_bridge somekey 1500
   run_bin doctor
-  assert_output --partial "MTU канала не определить"
+  assert_output --partial "сеть:       docker bridge MTU 1500"
+  refute_output --partial ", канал"      # не выдумываем то, чего не измерили
 }
 
 # ── диагностика сети контейнера ───────────────────────────────
@@ -255,7 +268,7 @@ EOF
   chmod +x "$MOCK_BIN_DIR/curl"
   run_doctor_in_container
   assert_output --partial "MTU: мелкий ответ прошёл, крупный завис"
-  assert_output --partial '{"mtu": 1400}'
+  assert_output --partial '{"mtu": <MTU канала>}'
   assert_output --partial "расширений VS Code"
 }
 
@@ -271,5 +284,5 @@ EOF
   mock_bin getent 0 ""
   mock_bin curl 0 ""
   run_doctor_in_container
-  assert_output --partial "DNS, TLS и крупный ответ — все три прошли"
+  assert_output --partial "запросы прошли: DNS, TLS и крупный ответ"
 }
