@@ -114,6 +114,7 @@
           "**/cache/**": true,
           "**/.nx/**": true
         },
+        "todo-tree.ripgrep.ripgrep": "/usr/bin/rg",
         "editor.cursorWidth": 2,
         "editor.tabSize": 2,
         "debug.javascript.autoAttachFilter": "disabled",

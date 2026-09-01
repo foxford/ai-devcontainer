@@ -176,3 +176,43 @@ EOF
   assert_output --partial "не резолвится"
   assert_output --partial "pull access denied"
 }
+
+# ── диагностика сети контейнера ───────────────────────────────
+# В контейнере (PLATFORM_ROOT read-only) doctor проверяет сеть лесенкой
+# резолв → мелкий HTTPS → крупный HTTPS. Провалившаяся ступень = диагноз;
+# самая коварная — последняя: мелкое ходит, крупное висит, и это MTU.
+run_doctor_in_container() {
+  chmod -w "$PLATFORM_FIXTURE"
+  AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" run bash "$BIN" doctor
+}
+
+@test "doctor в контейнере: крупный HTTPS висит — диагноз MTU, а не «интернет тормозит»" {
+  mock_bin getent 0 ""
+  cat > "$MOCK_BIN_DIR/curl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *registry.npmjs.org*) exit 28 ;;   # 28 = таймаут curl
+esac
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/curl"
+  run_doctor_in_container
+  assert_output --partial "MTU: мелкий ответ прошёл, крупный завис"
+  assert_output --partial '{"mtu": 1400}'
+  assert_output --partial "расширений VS Code"
+}
+
+@test "doctor в контейнере: не резолвится DNS — упирается в резолвер, дальше не идёт" {
+  mock_bin getent 1 ""
+  mock_bin curl 0 ""
+  run_doctor_in_container
+  assert_output --partial "не резолвится"
+  refute_output --partial "MTU: мелкий ответ"
+}
+
+@test "doctor в контейнере: сеть в порядке — так и говорит" {
+  mock_bin getent 0 ""
+  mock_bin curl 0 ""
+  run_doctor_in_container
+  assert_output --partial "DNS, TLS и крупный ответ — все три прошли"
+}

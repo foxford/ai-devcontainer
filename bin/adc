@@ -302,6 +302,55 @@ check_from_resolves() {
   return 1
 }
 
+# «Вечные таймауты» в девконтейнере — не одна болезнь, а три, и лечатся они
+# по-разному. Различить их можно за секунды, если спросить правильно:
+#
+#   • DNS не резолвит          — не резолвится ничего, симптом мгновенный;
+#   • MTU режет большие пакеты — DNS и мелкие запросы идут, а TLS-хендшейк и
+#     любая крупная выдача висят до таймаута. Классика корпоративного VPN
+#     (MTU 1400) и вложенного docker: интерфейс контейнера остаётся с 1500,
+#     пакет с DF-битом молча дропается по дороге. Именно так выглядит
+#     «models.list … operation timed out» и намертво зависшая установка
+#     расширений в VS Code — сам редактор при этом не жалуется вовсе;
+#   • прокси                   — задан в окружении и не пропускает.
+#
+# Поэтому проверка идёт лесенкой: резолв → мелкий HTTPS → крупный HTTPS.
+# Провалившаяся ступень и есть диагноз.
+check_container_net() {
+  local mtu proxy
+  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null || true)"
+  proxy="${HTTPS_PROXY:-${https_proxy:-}}"
+  echo "сеть:       eth0 MTU ${mtu:-?}${proxy:+, HTTPS_PROXY=$proxy}"
+
+  if ! getent hosts registry.npmjs.org >/dev/null 2>&1; then
+    err "DNS: registry.npmjs.org не резолвится — наружу не уходит ни один запрос"
+    echo "    Резолвер контейнера: cat /etc/resolv.conf" >&2
+    return 1
+  fi
+
+  command -v curl >/dev/null 2>&1 || { echo "            curl не найден — TLS и крупный ответ не проверить"; return 0; }
+
+  # Мелкий ответ проходит почти всегда — даже когда MTU обрезан.
+  if ! curl -fsS -m 10 -o /dev/null https://api.github.com/zen 2>/dev/null; then
+    err "TLS: api.github.com молчит 10 с — связи наружу нет"
+    [ -n "$proxy" ] && echo "    Задан прокси $proxy — проверь, что он доступен изнутри контейнера." >&2
+    return 1
+  fi
+
+  # А крупный — вот он и висит, когда MTU не тот.
+  if ! curl -fsS -m 25 -o /dev/null https://registry.npmjs.org/typescript 2>/dev/null; then
+    err "MTU: мелкий ответ прошёл, крупный завис на 25 с — режется по дороге"
+    echo "    eth0 держит MTU ${mtu:-1500}, а канал (VPN, вложенный docker) уже: пакет" >&2
+    echo "    с DF-битом дропается молча, и таймаутом кончается всё объёмное —" >&2
+    echo "    установка расширений VS Code, pnpm install, модели Copilot." >&2
+    echo "    Чинить на ХОСТЕ: /etc/docker/daemon.json → {\"mtu\": 1400}," >&2
+    echo "    перезапуск демона, Rebuild Container." >&2
+    return 1
+  fi
+
+  echo "            DNS, TLS и крупный ответ — все три прошли"
+}
+
 cmd_ensure_image() {
   host_only "ensure-image"
   command -v docker >/dev/null 2>&1 || { err "docker не найден"; exit 1; }
@@ -727,6 +776,7 @@ cmd_doctor() {
   else
     echo "образ:      проверяется только на хосте (здесь docker — внутренний демон контейнера)"
     echo "персист:    проверяется только на хосте (~/.ai-devcontainer-dev — хостовый путь)"
+    check_container_net || ok=0
   fi
   if [ -d "$PLATFORM_ROOT/skills" ]; then
     echo "скиллы:     $(find "$PLATFORM_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) на платформе (проектные форки: adc skill status)"
