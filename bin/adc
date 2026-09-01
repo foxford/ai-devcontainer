@@ -19,6 +19,8 @@
 #   adc skill <cmd>       — скиллы проекта: list / status / fork /
 #                                        unfork / migrate / sync
 #   adc mcp <list|sync>   — MCP-серверы проекта: показать / пересобрать
+#   adc hermes <cmd>      — общий на все проекты логин Hermes:
+#                                        status / link / save / unlink
 #   adc plans [--all]     — задачи проекта: что в работе, что залежалось
 #   adc prepare           — хостовая подготовка проекта; её зовёт
 #                                        initializeCommand, руками не нужна
@@ -29,9 +31,44 @@
 
 set -euo pipefail
 
+# ── переносимость: хост бывает macOS ──────────────────────────
+# Этот CLI — единственное, что платформа запускает НА ХОСТЕ, а хост бывает
+# macOS. GNU-измы (`readlink -f`, `sha256sum`, `sed -i` без суффикса) там либо
+# отсутствуют, либо ведут себя иначе, и под `set -e` любая из них убивает
+# `adc prepare` — то есть образ dev-base:local не собирается, а VS Code потом
+# показывает совершенно постороннее «pull access denied: dev-base:local»
+# (он честно идёт за базой в docker.io, потому что локально её нет).
+# Поэтому ниже — переносимые замены. Всё, что живёт в tooling/, работает
+# только внутри контейнера (Linux) и таких ограничений не имеет.
+
+# Разыменование симлинков без `readlink -f`: у BSD readlink флаг -f появился
+# только в macOS 12.3, а сам adc почти всегда зовут через симлинк из ~/.local/bin.
+resolve_link() {
+  local p="$1" t
+  while [ -L "$p" ]; do
+    t="$(readlink "$p")"
+    case "$t" in
+      /*) p="$t" ;;
+      *)  p="$(dirname "$p")/$t" ;;
+    esac
+  done
+  printf '%s' "$p"
+}
+
+# Абсолютный путь без `readlink -f` — только для сравнения каталогов.
+abs_dir() { (cd "$1" 2>/dev/null && pwd) || printf '%s' "$1"; }
+
+# sha256 со stdin: GNU coreutils → macOS shasum → openssl.
+sha256_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256
+  else openssl dgst -sha256 | sed 's/^.*= //'
+  fi
+}
+
 PLATFORM_ROOT="${AI_DEVCONTAINER_HOME:-$HOME/.local/share/ai-devcontainer}"
 # запуск прямо из клона (разработка платформы): берём корень от себя
-SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SELF_DIR="$(cd "$(dirname "$(resolve_link "${BASH_SOURCE[0]}")")/.." && pwd)"
 [ -f "$PLATFORM_ROOT/Dockerfile" ] || PLATFORM_ROOT="$SELF_DIR"
 
 IMAGE_TAG="dev-base:local"
@@ -78,7 +115,7 @@ host_only() {
 # Ключ актуальности образа — хеш того, что РЕАЛЬНО в него печётся
 # (Dockerfile + tooling/setup.sh). Скрипты/скиллы монтируются в рантайме
 # из клона, их правка пересборку образа не требует.
-image_key() { cat "$PLATFORM_ROOT/Dockerfile" "$PLATFORM_ROOT/tooling/setup.sh" 2>/dev/null | sha256sum | cut -c1-12; }
+image_key() { cat "$PLATFORM_ROOT/Dockerfile" "$PLATFORM_ROOT/tooling/setup.sh" 2>/dev/null | sha256_stdin | cut -c1-12; }
 
 # Типы скаффолда = подкаталоги skeleton/, каждый с манифестом .scaffold.json.
 # Позволяет `new` расти под Rails/Go/что-угодно без правки этого файла.
@@ -153,7 +190,10 @@ apply_scaffold_rename() {
     pattern="$(jq -r ".rename[$i].pattern" "$manifest")"
     replace="$(jq -r ".rename[$i].replace" "$manifest" | sed "s/{{NAME}}/$name/g")"
     if [ -f "$dest/$file" ]; then
-      sed -i "s/$pattern/$replace/g" "$dest/$file"
+      # Без `sed -i`: у BSD (macOS) он требует аргумент-суффикс, и GNU-форма
+      # молча съела бы выражение как имя бэкапа. Временный файл переносим.
+      sed "s/$pattern/$replace/g" "$dest/$file" > "$dest/$file.adc-tmp" \
+        && mv "$dest/$file.adc-tmp" "$dest/$file"
     else
       warn "скаффолд: нет файла для переименования: $file"
     fi
@@ -208,6 +248,60 @@ cmd_new() {
   echo "          postCreate засидит .hermes и соберёт скиллы из платформы)"
 }
 
+# dev-base:local существует ТОЛЬКО в локальном хранилище демона — в реестр он
+# не пушится. Значит `FROM dev-base:local` в Dockerfile проекта обязан
+# резолвиться из этого же хранилища. Две конфигурации хоста (обе живьём
+# встречаются на macOS) это ломают, и симптом у них общий и совершенно
+# посторонний на вид:
+#
+#   ERROR: failed to load cache key: pull access denied,
+#          repository does not exist: docker.io/library/dev-base:local
+#
+# — то есть buildx не нашёл образ локально и честно пошёл за ним в docker.io.
+#
+#   1. Билдер buildx с драйвером docker-container (появляется после
+#      `docker buildx create --use`). Он крутится в СВОЁМ контейнере и
+#      хранилище демона не видит вовсе — ни один локальный тег ему не доступен.
+#   2. Разные docker-контексты у терминала и у VS Code: образ собран, скажем, в
+#      colima/orbstack, а девконтейнер строит Docker Desktop. `docker images` в
+#      терминале образ показывает — у другого демона его нет.
+#
+# Проверяем ПОСЛЕ сборки: молчать нельзя, человек увидит ошибку не здесь, а
+# через десять минут в панели VS Code и без единой подсказки, где искать.
+check_docker_build_env() {
+  local driver ctx
+  driver="$(docker buildx inspect 2>/dev/null | awk -F': *' '/^Driver:/ {print $2; exit}')"
+  ctx="$(docker context show 2>/dev/null || true)"
+
+  if [ -n "$driver" ] && [ "$driver" != "docker" ]; then
+    warn "билдер buildx с драйвером «$driver» не видит локальные образы —"
+    echo "    FROM dev-base:local в проекте упадёт «pull access denied: docker.io/library/dev-base:local»." >&2
+    echo "    Почини разово:  docker buildx use default   (или desktop-linux)" >&2
+    echo "    Посмотреть все: docker buildx ls" >&2
+    return 1
+  fi
+  dim "  docker: контекст ${ctx:-?}, драйвер сборки ${driver:-docker}"
+}
+
+# Воспроизводит ровно то, что делает VS Code: сборку с `FROM dev-base:local`.
+# Проверка «docker image inspect» на это не отвечает — она спрашивает демона, а
+# базу ищет BuildKit, и вопрос как раз в том, добирается ли ОН до хранилища.
+# Тег `dev-base:local` раскрывается в docker.io/library/dev-base:local — это
+# нормально и само по себе не беда: беда, когда BuildKit идёт по нему в сеть.
+check_from_resolves() {
+  local ctx_dir out
+  ctx_dir="$(mktemp -d)"
+  printf 'FROM %s\n' "$IMAGE_TAG" > "$ctx_dir/Dockerfile"
+  if out="$(docker build -q -f "$ctx_dir/Dockerfile" "$ctx_dir" 2>&1)"; then
+    rm -rf "$ctx_dir"
+    return 0
+  fi
+  rm -rf "$ctx_dir"
+  err "FROM $IMAGE_TAG не резолвится — девконтейнер упадёт на этом же месте:"
+  echo "$out" | tail -3 | sed 's/^/    /' >&2
+  return 1
+}
+
 cmd_ensure_image() {
   host_only "ensure-image"
   command -v docker >/dev/null 2>&1 || { err "docker не найден"; exit 1; }
@@ -216,6 +310,9 @@ cmd_ensure_image() {
   have="$(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null || true)"
   if [ -n "$have" ] && [ "$have" = "$want" ]; then
     log "$IMAGE_TAG актуален (key $have)"
+    # Именно здесь чаще всего и всплывает беда: образ на месте, а девконтейнер
+    # его «не видит» — сборку мы пропускаем, но проверить окружение обязаны.
+    check_docker_build_env || true
     return 0
   fi
   log "Собираю $IMAGE_TAG (key $want; было: ${have:-нет образа}) — первый раз ~5-10 мин, дальше кеш"
@@ -223,6 +320,7 @@ cmd_ensure_image() {
     --label "$REV_LABEL=$want" \
     -t "$IMAGE_TAG" "$PLATFORM_ROOT"
   log "Готово: $IMAGE_TAG"
+  check_docker_build_env || true
 }
 
 cmd_update() {
@@ -369,6 +467,16 @@ cmd_skill() {
   AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$PWD" bash "$helper" "$@"
 }
 
+# Авторизация Hermes. Единственная команда платформы, которая вообще трогает
+# логин агента, — и трогает не сам логин, а его РАСПОЛОЖЕНИЕ: делает
+# ~/.hermes/auth.json общим на все проекты машины. Логинится по-прежнему
+# человек, руками, один раз.
+cmd_hermes() {
+  local helper="$PLATFORM_ROOT/tooling/hermes-auth.sh"
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
+  bash "$helper" "$@"
+}
+
 # MCP-серверы проекта. Форков, как у скиллов, тут нет: слой проекта — один
 # небольшой файл .agents/mcp.json, правится руками. Поэтому всего две команды.
 cmd_mcp() {
@@ -432,7 +540,7 @@ check_project_devcontainer() {
     [ "$quiet" = 1 ] || echo "проект:     devcontainer.json не найден (запусти из каталога проекта, чтобы сверить его)"
     return 0
   fi
-  if [ "$(readlink -f "$root")" = "$(readlink -f "$PLATFORM_ROOT")" ]; then
+  if [ "$(abs_dir "$root")" = "$(abs_dir "$PLATFORM_ROOT")" ]; then
     [ "$quiet" = 1 ] || echo "проект:     это репозиторий платформы — сверять не с чем"
     return 0
   fi
@@ -596,6 +704,20 @@ cmd_doctor() {
   if [ -w "$PLATFORM_ROOT" ]; then
     command -v docker >/dev/null 2>&1 && echo "docker:     $(docker --version | cut -d, -f1)" || { echo "docker:     НЕТ — нужен для devcontainer"; ok=0; }
     docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 && echo "образ:      $IMAGE_TAG есть (key $(docker image inspect "$IMAGE_TAG" --format "{{index .Config.Labels \"$REV_LABEL\"}}" 2>/dev/null), нужен $(image_key))" || echo "образ:      нет (соберётся при первом контейнере или: adc ensure-image)"
+    # «Образ есть, а девконтейнер его не находит» — отдельная болезнь, и
+    # смотреть на неё надо здесь, а не в панели сборки VS Code.
+    if ! check_docker_build_env; then
+      ok=0
+    elif docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+      if check_from_resolves; then
+        echo "            FROM $IMAGE_TAG резолвится — девконтейнер базу найдёт"
+      else
+        echo "            Обычно это разные демоны у терминала и у VS Code" >&2
+        echo "            (colima/orbstack ↔ Docker Desktop): сверь контекст выше" >&2
+        echo "            с тем, что пишет лог Dev Containers." >&2
+        ok=0
+      fi
+    fi
     if [ -d "$HOME/.ai-devcontainer-dev" ]; then
       local n; n="$(find "$HOME/.ai-devcontainer-dev" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
       echo "персист:    ~/.ai-devcontainer-dev есть (проектов: $n; каталоги per-project, создаёт adc prepare)"
@@ -616,6 +738,16 @@ cmd_doctor() {
   else
     echo "MCP:        нет $PLATFORM_ROOT/mcp/servers.json — платформа не обновлена?"
   fi
+  # Логин Hermes проверяем только в контейнере: стор лежит на volume
+  # platform-ai-tools, на хосте его нет вовсе и «нет логина» соврало бы.
+  if [ -d "${AI_DEVCONTAINER_HERMES_STORE:-/opt/ai-tools/share/hermes}" ] \
+     || [ -d /opt/ai-tools ]; then
+    if bash "$PLATFORM_ROOT/tooling/hermes-auth.sh" configured 2>/dev/null; then
+      echo "Hermes:     логин есть (где и чей — adc hermes status)"
+    else
+      echo "Hermes:     логина нет — hermes setup один раз на машину (adc hermes status)"
+    fi
+  fi
   if [ -d "$PLATFORM_ROOT/skeleton" ]; then
     echo "скаффолды:  $(list_scaffold_types | paste -sd, -) (adc new --type <тип>)"
   else
@@ -633,6 +765,7 @@ case "${1:-help}" in
   doctor)       cmd_doctor;;
   skill)        shift; cmd_skill "$@";;
   mcp)          shift; cmd_mcp "$@";;
+  hermes)       shift; cmd_hermes "$@";;
   plans)        shift; cmd_plans "$@";;
   sync)         shift; cmd_sync "$@";;
   prepare)      shift; cmd_prepare "$@";;

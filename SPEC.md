@@ -44,7 +44,7 @@
 5. `graphify update .` — код-граф проекта (локально, не в репо);
 6. `adc sync` — та же команда, что набирают руками: скиллы и доки в `.claude/skills` + `AGENTS.skills.md`, MCP в `.mcp.json`/`~/.codex/config.toml`/`~/.hermes/config.yaml`, `.gitignore`, отметка применённой ревизии;
 7. `playwright install chromium` — браузеры в named volume (для раннера проекта и для браузерного MCP; не блокирует);
-8. `.hermes/bootstrap.sh` — роли, kanban, state-machine (если hermes авторизован).
+8. **Hermes** — `adc hermes link` (логин машины: `auth.json` → общий стор на `/opt/ai-tools`) и `.hermes/bootstrap.sh`, но **только если логин есть**: без него bootstrap падает на клонировании профиля, а залогиниться без TTY нельзя. Нет логина — печатается команда, её же напоминает motd.
 
 ## Обновления
 

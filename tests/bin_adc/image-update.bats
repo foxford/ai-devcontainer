@@ -29,44 +29,104 @@ run_bin() {
   assert_output --partial "доступна только на хосте"
 }
 
-@test "ensure-image: образ актуален (label совпадает) — не пересобирает" {
-  local key
-  key="$(cat "$PLATFORM_FIXTURE/Dockerfile" "$PLATFORM_FIXTURE/tooling/setup.sh" | sha256sum | cut -c1-12)"
-  mock_bin docker 0 ""
+# Мок docker: image inspect отдаёт $1 как метку образа (пусто — образа нет),
+# buildx inspect — драйвер сборки, context show — имя контекста.
+mock_docker() {
+  local label="${1:-}" driver="${2:-docker}"
   cat > "$MOCK_BIN_DIR/docker" <<EOF
 #!/usr/bin/env bash
 echo "\$@" >> "$MOCK_CALLS_DIR/docker.log"
-if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
-  echo "$key"
-  exit 0
-fi
+case "\$1 \$2" in
+  "image inspect") [ -n "$label" ] || exit 1; echo "$label"; exit 0 ;;
+  "buildx inspect") echo "Name:   test"; echo "Driver: $driver"; exit 0 ;;
+  "context show")   echo "desktop-linux"; exit 0 ;;
+esac
 exit 0
 EOF
   chmod +x "$MOCK_BIN_DIR/docker"
+}
+
+@test "ensure-image: образ актуален (label совпадает) — не пересобирает" {
+  local key
+  key="$(cat "$PLATFORM_FIXTURE/Dockerfile" "$PLATFORM_FIXTURE/tooling/setup.sh" | sha256sum | cut -c1-12)"
+  mock_docker "$key"
 
   run_bin ensure-image
   assert_success
   assert_output --partial "актуален"
   run cat "$MOCK_CALLS_DIR/docker.log"
-  refute_output --partial "build"
+  # Именно `build`, а не любое вхождение: в логе есть ещё `buildx inspect` —
+  # проверка окружения сборки, она как раз должна была случиться.
+  refute_output --regexp '(^| )build '
+  assert_output --partial "buildx inspect"
 }
 
 @test "ensure-image: образа нет — собирает" {
-  cat > "$MOCK_BIN_DIR/docker" <<EOF
-#!/usr/bin/env bash
-echo "\$@" >> "$MOCK_CALLS_DIR/docker.log"
-if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
-  exit 1
-fi
-exit 0
-EOF
-  chmod +x "$MOCK_BIN_DIR/docker"
+  mock_docker ""
 
   run_bin ensure-image
   assert_success
   assert_output --partial "Готово: dev-base:local"
   run cat "$MOCK_CALLS_DIR/docker.log"
   assert_output --partial "build"
+}
+
+# dev-base:local нигде не публикуется, поэтому FROM обязан резолвиться из
+# локального хранилища демона. Билдер docker-container его не видит, и проект
+# падает с «pull access denied: docker.io/library/dev-base:local» — ошибкой, по
+# которой сходу не догадаться, что виноват билдер.
+@test "ensure-image: билдер docker-container — предупреждение про pull access denied" {
+  local key
+  key="$(cat "$PLATFORM_FIXTURE/Dockerfile" "$PLATFORM_FIXTURE/tooling/setup.sh" | sha256sum | cut -c1-12)"
+  mock_docker "$key" docker-container
+
+  run_bin ensure-image
+  assert_success
+  assert_output --partial "не видит локальные образы"
+  assert_output --partial "docker buildx use default"
+}
+
+@test "ensure-image: обычный драйвер docker — показывает контекст, без паники" {
+  local key
+  key="$(cat "$PLATFORM_FIXTURE/Dockerfile" "$PLATFORM_FIXTURE/tooling/setup.sh" | sha256sum | cut -c1-12)"
+  mock_docker "$key" docker
+
+  run_bin ensure-image
+  assert_success
+  assert_output --partial "контекст desktop-linux"
+  refute_output --partial "не видит локальные образы"
+}
+
+# bin/adc — единственное, что платформа запускает НА ХОСТЕ, а хост бывает
+# macOS: там нет sha256sum, `readlink -f` появился только в 12.3, а BSD `sed -i`
+# требует аргумент-суффикс. Под `set -e` любая такая дыра убивает `adc prepare`,
+# образ не собирается — и человек видит постороннее «pull access denied» на
+# FROM dev-base:local. Тест сторожит именно повторный занос GNU-изма в CLI:
+# отловить его на Linux-прогоне иначе нечем.
+@test "portability: в bin/adc нет GNU-only конструкций" {
+  # Комментарии не считаем: в них эти имена стоят как раз с объяснением, почему
+  # их тут нет. Смотрим только исполняемый код.
+  # Строка самого фолбэка (`command -v sha256sum … then sha256sum`) — не нарушение:
+  # это и есть переносимая обёртка, ради которой всё затевалось.
+  run bash -c "grep -vE '^[[:space:]]*#' '$BIN' | grep -v 'command -v sha256sum' \
+                 | grep -nE 'sha256sum|readlink -f|sed -i |stat -c|find [^|]*-printf|grep -P'"
+  assert_failure   # ни одного совпадения
+}
+
+# adc почти всегда зовут через симлинк (~/.local/bin/adc → клон платформы), и
+# корень платформы вычисляется разыменованием ЭТОГО пути. Без `readlink -f`
+# логика самописная — проверяем, что она работает.
+@test "portability: запуск через симлинк находит корень платформы" {
+  local key link_dir
+  key="$(cat "$PLATFORM_FIXTURE/Dockerfile" "$PLATFORM_FIXTURE/tooling/setup.sh" | sha256sum | cut -c1-12)"
+  mock_docker "$key" docker
+  link_dir="$(mktemp -d)"
+  ln -s "$BIN" "$link_dir/adc"
+
+  AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" run bash "$link_dir/adc" ensure-image
+  assert_success
+  assert_output --partial "актуален"
+  rm -rf "$link_dir"
 }
 
 @test "update: PLATFORM_ROOT read-only — делегирует в sync" {
@@ -93,4 +153,26 @@ EOF
   run_bin update
   assert_success
   assert_output --partial "не git-клон, пропускаю pull"
+}
+
+# «Образ есть, а девконтейнер его не видит»: docker image inspect отвечает за
+# демона, а базу ищет BuildKit. Поэтому doctor повторяет ровно ту сборку,
+# которую сделает VS Code, и показывает её настоящую ошибку.
+@test "doctor: FROM dev-base:local не резолвится — жалуется, а не молчит" {
+  cat > "$MOCK_BIN_DIR/docker" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "image inspect")  echo somekey; exit 0 ;;
+  "buildx inspect") echo "Driver: docker"; exit 0 ;;
+  "context show")   echo desktop-linux; exit 0 ;;
+  "build -q")
+    echo "ERROR: failed to solve: pull access denied, repository does not exist" >&2
+    exit 1 ;;
+esac
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/docker"
+  run_bin doctor
+  assert_output --partial "не резолвится"
+  assert_output --partial "pull access denied"
 }

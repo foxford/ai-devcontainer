@@ -54,6 +54,17 @@ REPO="${REPO_ROOT:-$PWD}"
 while [ "$REPO" != "/" ] && [ ! -d "$REPO/.git" ] && [ ! -d "$REPO/.devcontainer" ]; do
   REPO="$(dirname "$REPO")"
 done
+# Hermes без логина не поднимается: bootstrap клонирует активный профиль и
+# ходит в Kanban, поэтому postCreate зовёт его только когда логин есть (шаг 8
+# post-create-setup.sh). Залогиниться может лишь человек и лишь в TTY — вот
+# здесь и напоминаем, пока профилей нет. Логин при этом разовый на машину:
+# ~/.hermes/auth.json — симлинк в общий стор (adc hermes status).
+if [ -f "$REPO/.hermes/bootstrap.sh" ] && [ -z "$(ls -A "$HOME/.hermes/profiles" 2>/dev/null)" ]; then
+  echo ""
+  echo "  🐦 Hermes-пайплайн ещё не поднят — один раз на машину:"
+  echo "      hermes setup && adc hermes save && bash .hermes/bootstrap.sh"
+fi
+
 PLAT="${AI_DEVCONTAINER_HOME:-/opt/ai-devcontainer}"
 if [ -f "$REPO/.claude/.platform-rev" ] && [ -d "$PLAT/.git" ]; then
   APPLIED="$(cat "$REPO/.claude/.platform-rev" 2>/dev/null)"

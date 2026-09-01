@@ -49,6 +49,12 @@ bash tests/run.sh   # весь bats-набор; для одного файла �
   Проектная правка живёт в самом проекте (`adc skill fork`), сюда не тащится.
 - Общее правило для агентов — в `docs/AGENTS.platform.md`, а не в `skeleton/AGENTS.md`:
   первый раздаётся всем проектам, второй остаётся у проекта под его специфику.
+- `bin/adc` и `install.sh` запускаются НА ХОСТЕ, а хост бывает macOS: никаких
+  `sha256sum`, `readlink -f`, `sed -i` без суффикса, `find -printf`, `stat -c`.
+  Под `set -e` такая строка убивает `adc prepare`, образ не собирается, и VS Code
+  показывает постороннее «pull access denied: docker.io/library/dev-base:local».
+  Сторожит тест `portability: в bin/adc нет GNU-only конструкций`. На `tooling/`
+  правило не распространяется — он работает только внутри контейнера.
 - Не добавлять зависимости без явного разрешения пользователя.
 - Рабочие артефакты (node_modules, .nx, build, pnpm-store) не коммитить.
 - `--passWithNoTests` — только у таргета `test`, не в комбинированных `run-many`.
@@ -204,6 +210,55 @@ OAuth-сервер туда автоматически не добавляетс
 к серверу прямо при добавлении, поднимая интерактивный OAuth-промпт: в
 postCreate это висяк. Поэтому серверы с `x-oauth` в Codex **не добавляются
 автоматически**, wire-mcp только печатает команду.
+
+## dev-base:local и «pull access denied»
+
+Образ базы нигде не публикуется — он существует только в локальном хранилище
+демона, а `FROM dev-base:local` в Dockerfile проекта обязан резолвиться оттуда
+же. Если сборщик до этого хранилища не достаёт, buildx честно идёт в docker.io
+и падает `pull access denied, repository does not exist` — ошибкой, по которой
+про базу не догадаться. Два известных случая, оба живьём на macOS:
+
+| Что | Почему видно `docker images`, а сборка падает | Починка |
+|---|---|---|
+| билдер buildx с драйвером `docker-container` (после `docker buildx create --use`) | билдер крутится в своём контейнере и хранилища демона не видит вовсе | `docker buildx use default` (или `desktop-linux`) |
+| разные docker-контексты у терминала и у VS Code (colima/orbstack ↔ Docker Desktop) | образ собран одним демоном, девконтейнер строится другим | привести контекст к одному, `docker context ls` |
+
+`adc ensure-image` и `adc doctor` печатают контекст и драйвер, а на
+`docker-container` ругаются явно — проверка идёт и в ветке «образ актуален»,
+потому что именно там беда и всплывает. Сверх того `doctor` повторяет ту самую
+сборку (`FROM dev-base:local` в пустом контексте) и показывает её настоящую
+ошибку: `docker image inspect` отвечает за демона, а базу ищет BuildKit — это
+разные вопросы, и расходятся они ровно в этом случае.
+
+## Авторизация Hermes — одна на машину
+
+`~/.hermes` у каждого проекта свой (bind-маунт), а логин Hermes лежит именно
+там — `auth.json`. Из-за этого каждый новый проект встречал человека визардом
+`hermes setup` с нуля, хотя ключ у него уже был в соседнем проекте, а
+`.hermes/bootstrap.sh` в postCreate падал на клонировании профиля.
+
+Решение — `tooling/hermes-auth.sh` (`adc hermes <status|link|save|unlink>`):
+`auth.json` и `auth.lock` проекта становятся симлинками в общий стор
+`/opt/ai-tools/share/hermes`. Том `platform-ai-tools` общий на все проекты и уже
+примонтирован в те, что заведены раньше, — devcontainer.json править не надо.
+
+Апстрим такую раскладку держит **намеренно**: `atomic_replace()` резолвит
+симлинк перед `os.replace`, «so the symlink survives» (`utils.py`, GitHub
+#16743), и через неё же идут все refresh'и OAuth-токенов. `auth.lock` линкуем
+рядом, потому что `flock` Hermes держит файлом возле `auth.json`
+(`auth.py:944`): без общего lock-файла блокировка не была бы межконтейнерной.
+
+`config.yaml` и `.env` НЕ шарим — там проектное (`hooks.pre_tool_call` с путями
+репо, `skills.external_dirs`, `mcp_servers`, `kanban.*`, `terminal.*`). Из
+config.yaml переносится ровно провайдер и модель, и штатной командой
+`hermes config set`, а не правкой YAML.
+
+**Логинится по-прежнему человек и только в TTY**: `hermes setup` (или без TTY —
+`hermes auth add <провайдер> --type api-key --api-key <ключ>`). Платформа
+трогает не логин, а его расположение. Поэтому postCreate зовёт bootstrap
+только когда логин есть — проверка `adc hermes configured` зеркалит
+`_has_any_provider_configured` (env-ключи → `$HERMES_HOME/.env` → `auth.json`).
 
 ## DSH (DeepSeek Harness)
 

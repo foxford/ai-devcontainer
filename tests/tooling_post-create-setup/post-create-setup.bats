@@ -13,12 +13,23 @@ setup() {
   REAL_PLATFORM_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
   PLATFORM_FIXTURE="$(mktemp -d)"
-  mkdir -p "$PLATFORM_FIXTURE/tooling/helpers" "$PLATFORM_FIXTURE/bin" "$PLATFORM_FIXTURE/skeleton/.hermes"
+  mkdir -p "$PLATFORM_FIXTURE/tooling/helpers" "$PLATFORM_FIXTURE/bin" \
+           "$PLATFORM_FIXTURE/skeleton/pnpm-monorepo/.hermes"
   cp "$REAL_PLATFORM_ROOT/tooling/post-create-setup.sh" "$PLATFORM_FIXTURE/tooling/post-create-setup.sh"
 
-  # Seed-источник .hermes: нужен хотя бы один не-.gitkeep файл, иначе
-  # seed_dir считает шаблон пустым и не сидит вовсе.
-  printf '#!/usr/bin/env bash\necho bootstrap\n' > "$PLATFORM_FIXTURE/skeleton/.hermes/bootstrap.sh"
+  # Seed-источник .hermes лежит внутри скаффолда (skeleton/<type>/.hermes) и
+  # нужен хотя бы один не-.gitkeep файл: иначе seed_dir считает шаблон пустым
+  # и не сидит вовсе.
+  HERMES_SEED="$PLATFORM_FIXTURE/skeleton/pnpm-monorepo/.hermes"
+  printf '#!/usr/bin/env bash\necho bootstrap\n' > "$HERMES_SEED/bootstrap.sh"
+
+  # hermes-auth.sh — настоящий: шаг 8 через него и связывает проект с общим
+  # логином, и решает, звать ли bootstrap. Оба каталога, которые он трогает,
+  # подменены на временные.
+  cp "$REAL_PLATFORM_ROOT/tooling/hermes-auth.sh" "$PLATFORM_FIXTURE/tooling/hermes-auth.sh"
+  export HERMES_HOME="$(mktemp -d)/hermes"
+  export AI_DEVCONTAINER_HERMES_STORE="$(mktemp -d)/store"
+  mkdir -p "$HERMES_HOME"
 
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/install-ai-tools.sh"
   printf '#!/usr/bin/env bash\ntrue\n' > "$PLATFORM_FIXTURE/tooling/wire-mcp.sh"
@@ -35,7 +46,8 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$PLATFORM_FIXTURE" "$PROJECT_DIR" "$HOME"
+  rm -rf "$PLATFORM_FIXTURE" "$PROJECT_DIR" "$HOME" \
+         "$(dirname "$HERMES_HOME")" "$(dirname "$AI_DEVCONTAINER_HERMES_STORE")"
   HOME="$HOME_BACKUP"
   mocks_cleanup
 }
@@ -58,6 +70,14 @@ run_postcreate() {
   assert_success
   [ -f "$PROJECT_DIR/.hermes/marker.txt" ]
   [ ! -f "$PROJECT_DIR/.hermes/bootstrap.sh" ]
+}
+
+@test "seed: пустой .hermes в проекте досидивается, а не считается за готовый" {
+  mkdir -p "$PROJECT_DIR/.hermes"      # след старой раскладки платформы
+  run_postcreate
+  assert_success
+  [ -f "$PROJECT_DIR/.hermes/bootstrap.sh" ]
+  assert_output --partial "seed: .hermes"
 }
 
 @test "pnpm install вызывается" {
@@ -126,17 +146,53 @@ EOF
   assert_output --partial "adc sync failed"
 }
 
-@test "нет .hermes/ в проекте после сида (шаблон платформы пуст) — предупреждение на шаге 8" {
-  rm -f "$PLATFORM_FIXTURE/skeleton/.hermes/bootstrap.sh"   # шаблон снова пуст → не сидится
+@test "нет .hermes/bootstrap.sh после сида (шаблон платформы пуст) — шаг 8 пропускается" {
+  rm -f "$HERMES_SEED/bootstrap.sh"   # шаблон снова пуст → не сидится
   run_postcreate
   assert_success
-  assert_output --partial "нет .hermes/ — пропускаю"
+  assert_output --partial "нет .hermes/bootstrap.sh — пропускаю"
 }
 
-@test "hermes не в PATH — предупреждение с подсказкой" {
+# Залогиниться из postCreate нельзя (нет TTY), поэтому без логина bootstrap не
+# зовём вовсе: он бы гарантированно упал на клонировании профиля.
+@test "логина нет — bootstrap не запускается, печатается подсказка" {
+  mock_bin hermes 0 ""
+  printf '#!/usr/bin/env bash\ntouch "%s/bootstrap-ran"\n' "$PROJECT_DIR" > "$HERMES_SEED/bootstrap.sh"
   run_postcreate
   assert_success
-  assert_output --partial "hermes CLI не в PATH"
+  [ ! -e "$PROJECT_DIR/bootstrap-ran" ]
+  assert_output --partial "логина ещё нет"
+  assert_output --partial "hermes setup && adc hermes save"
+}
+
+@test "логин есть — bootstrap запускается сам" {
+  mock_bin hermes 0 ""
+  printf '{"version":1,"active_provider":"openrouter","providers":{"openrouter":{}}}\n' \
+    > "$HERMES_HOME/auth.json"
+  printf '#!/usr/bin/env bash\ntouch "%s/bootstrap-ran"\n' "$PROJECT_DIR" > "$HERMES_SEED/bootstrap.sh"
+  run_postcreate
+  assert_success
+  [ -e "$PROJECT_DIR/bootstrap-ran" ]
+}
+
+@test "логин проекта уезжает в общий стор — следующему проекту его уже раздадут" {
+  mock_bin hermes 0 ""
+  printf '{"version":1,"active_provider":"openrouter","providers":{"openrouter":{}}}\n' \
+    > "$HERMES_HOME/auth.json"
+  run_postcreate
+  assert_success
+  [ -L "$HERMES_HOME/auth.json" ]
+  run cat "$AI_DEVCONTAINER_HERMES_STORE/auth.json"
+  assert_output --partial "openrouter"
+}
+
+@test "bootstrap упал — предупреждение, postCreate не падает" {
+  mock_bin hermes 0 ""
+  printf '{"version":1,"active_provider":"openrouter","providers":{}}\n' > "$HERMES_HOME/auth.json"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$HERMES_SEED/bootstrap.sh"
+  run_postcreate
+  assert_success
+  assert_output --partial ".hermes/bootstrap.sh упал"
 }
 
 @test "AI_DEVCONTAINER_SKIP_BROWSERS пропускает секцию браузеров" {

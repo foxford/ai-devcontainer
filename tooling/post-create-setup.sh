@@ -14,7 +14,7 @@
 #   5. graphify update .             ─ граф проекта (локально в graphify-out/)
 #   6. adc sync             ─ скиллы, доки и MCP платформы → проект
 #   7. playwright install            ─ браузеры в volume (раннер проекта и/или MCP)
-#   8. .hermes/bootstrap.sh          ─ профайлы, hooks
+#   8. Hermes                        ─ ТОЛЬКО подсказка, bootstrap руками
 #
 # Идемпотентен: можно дёргать руками сколько угодно —
 #   bash /opt/dev-tooling/post-create-setup.sh
@@ -50,12 +50,25 @@ seed_dir() {
   [ -d "$src" ] || return 0
   # только .gitkeep внутри — шаблон пустой, сидить нечего
   [ -n "$(find "$src" -type f ! -name '.gitkeep' -print -quit)" ] || return 0
-  if [ -e "$dst" ]; then return 0; fi
-  cp -a "$src" "$dst"
+  # ПУСТОЙ каталог в проекте — это не «уже есть»: так выглядит и след от старой
+  # раскладки платформы, и каталог, заведённый редактором. Раньше он навсегда
+  # блокировал сид, и проект оставался с пустым .hermes и ошибкой на шаге 8.
+  if [ -e "$dst" ] && [ -n "$(ls -A "$dst" 2>/dev/null)" ]; then return 0; fi
+  mkdir -p "$dst"
+  cp -a "$src/." "$dst/"
   log "  seed: $(basename "$dst") ← шаблон платформы"
 }
+# Шаблон .hermes живёт ВНУТРИ скаффолда (skeleton/<type>/.hermes). Тип проекта
+# нигде в репозитории не записан, поэтому берём первый найденный: у всех
+# скаффолдов он один и тот же. Разъедутся — источник переедет в .scaffold.json.
+hermes_seed_src() {
+  local cand
+  for cand in "$PLATFORM_DIR"/skeleton/*/.hermes; do
+    [ -d "$cand" ] && { printf '%s' "$cand"; return 0; }
+  done
+}
 log "[1/8] Seed .hermes (если отсутствует)"
-seed_dir "$PLATFORM_DIR/skeleton/.hermes" "$PROJECT_ROOT/.hermes"
+seed_dir "$(hermes_seed_src)" "$PROJECT_ROOT/.hermes"
 # Скиллы НЕ сидим: с переходом на overlay стоковые живут в платформе
 # ($PLATFORM_DIR/skills) и подмешиваются на шаге 6. В проекте лежит только то,
 # чем он отличается, — форки и свои скиллы.
@@ -198,15 +211,31 @@ else
   fi
 fi
 
-# ── 8. Hermes per-project bootstrap ────────────────────────────
-log "[8/8] Hermes bootstrap"
-if [ ! -d ".hermes" ]; then
-  warn "нет .hermes/ — пропускаю"
+# ── 8. Hermes: общий логин + bootstrap ─────────────────────────
+#
+# Логин Hermes'а лежит в $HERMES_HOME/auth.json, а home у нас пер-проектный —
+# поэтому каждый новый проект просил `hermes setup` заново. Связываем проект с
+# общим стором на volume platform-ai-tools: логин, сделанный один раз в любом
+# проекте, работает во всех (подробности — в hermes-auth.sh).
+#
+# Bootstrap запускаем ТОЛЬКО когда есть чем ходить в модель: он клонирует
+# активный профиль и создаёт Kanban-доску, то есть без логина падает — а
+# postCreate идёт без TTY, и залогиниться отсюда всё равно нельзя. Раньше он
+# звался безусловно и встречал первого пользователя красной простынёй про то,
+# чего тот ещё физически не мог сделать.
+log "[8/8] Hermes"
+bash "$TOOLING_DIR/hermes-auth.sh" link || warn "hermes-auth link failed (не блокирует)"
+if [ ! -f ".hermes/bootstrap.sh" ]; then
+  log "  нет .hermes/bootstrap.sh — пропускаю"
 elif ! command -v hermes >/dev/null 2>&1; then
   warn "hermes CLI не в PATH — пропускаю. Открой новый шелл и запусти: bash .hermes/bootstrap.sh"
+elif ! bash "$TOOLING_DIR/hermes-auth.sh" configured; then
+  log "  логина ещё нет — bootstrap не зову (он без него падает)"
+  log "  залогинься один раз, дальше он раздастся всем проектам:"
+  echo "      hermes setup && adc hermes save && bash .hermes/bootstrap.sh"
+  echo "      без TTY:  hermes auth add <провайдер> --type api-key --api-key <ключ>"
 elif ! bash .hermes/bootstrap.sh; then
-  warn ".hermes/bootstrap.sh упал. Если это первый запуск — нужна авторизация:"
-  warn "  hermes setup && bash .hermes/bootstrap.sh"
+  warn ".hermes/bootstrap.sh упал — смотри вывод выше. Повторить: bash .hermes/bootstrap.sh"
 fi
 
 log "Готово."
