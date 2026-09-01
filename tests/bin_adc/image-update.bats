@@ -177,6 +177,63 @@ EOF
   assert_output --partial "pull access denied"
 }
 
+# ── диагностика сети: хостовая половина ───────────────────────
+# В контейнере виден только симптом (крупный ответ висит), а причина — здесь:
+# docker раздаёт контейнерам MTU больше, чем канал наружу.
+mock_ip() {
+  local dev="${1:-eth0}" mtu="${2:-1500}"
+  cat > "$MOCK_BIN_DIR/ip" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"route get"*) echo "1.1.1.1 via 10.0.0.1 dev $dev src 10.0.0.2"; exit 0 ;;
+  *"link show"*) echo "2: $dev: <BROADCAST,MULTICAST,UP> mtu $mtu qdisc fq_codel"; exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/ip"
+}
+
+# Мок docker, у которого ещё и bridge отдаёт заданный MTU.
+mock_docker_with_bridge() {
+  local key="$1" bridge_mtu="$2"
+  cat > "$MOCK_BIN_DIR/docker" <<EOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "image inspect")   echo "$key"; exit 0 ;;
+  "buildx inspect")  echo "Driver: docker"; exit 0 ;;
+  "context show")    echo default; exit 0 ;;
+  "network inspect") echo "$bridge_mtu"; exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/docker"
+}
+
+@test "doctor на хосте: MTU докера больше канала — это и есть причина зависаний" {
+  mock_ip eth0 1400
+  mock_docker_with_bridge somekey 1500
+  run_bin doctor
+  assert_output --partial "docker раздаёт контейнерам MTU 1500, а канал наружу — 1400"
+  assert_output --partial '{"mtu": 1400}'
+}
+
+@test "doctor на хосте: MTU совпадают — короткая строка без паники" {
+  mock_ip eth0 1500
+  mock_docker_with_bridge somekey 1500
+  run_bin doctor
+  assert_output --partial "MTU 1500 ≤ канал 1500"
+  refute_output --partial "будут висеть"
+}
+
+@test "doctor на хосте: MTU канала не определить — говорит прямо, не гадает" {
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$MOCK_BIN_DIR/ip"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$MOCK_BIN_DIR/route"
+  chmod +x "$MOCK_BIN_DIR/ip" "$MOCK_BIN_DIR/route"
+  mock_docker_with_bridge somekey 1500
+  run_bin doctor
+  assert_output --partial "MTU канала не определить"
+}
+
 # ── диагностика сети контейнера ───────────────────────────────
 # В контейнере (PLATFORM_ROOT read-only) doctor проверяет сеть лесенкой
 # резолв → мелкий HTTPS → крупный HTTPS. Провалившаяся ступень = диагноз;

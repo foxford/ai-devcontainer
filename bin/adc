@@ -316,6 +316,62 @@ check_from_resolves() {
 #
 # Поэтому проверка идёт лесенкой: резолв → мелкий HTTPS → крупный HTTPS.
 # Провалившаяся ступень и есть диагноз.
+# MTU канала, по которому хост реально ходит наружу. Берём с интерфейса
+# дефолтного маршрута, а не с первого попавшегося: у ноутбука их полдюжины
+# (wifi, докер-бриджи, VPN-туннель), и важен ровно тот, через который уйдёт
+# трафик контейнера.
+host_uplink_mtu() {
+  local dev out
+  if command -v ip >/dev/null 2>&1; then                       # Linux/WSL
+    dev="$(ip -o route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)"
+    if [ -n "$dev" ]; then
+      out="$(ip -o link show "$dev" 2>/dev/null | sed -n 's/.* mtu \([0-9]*\).*/\1/p' | head -1)"
+      [ -n "$out" ] && { printf '%s' "$out"; return 0; }
+    fi
+  fi
+  if command -v route >/dev/null 2>&1 && command -v ifconfig >/dev/null 2>&1; then   # macOS
+    dev="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2; exit}')"
+    if [ -n "$dev" ]; then
+      out="$(ifconfig "$dev" 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "mtu") {print $(i+1); exit}}')"
+      [ -n "$out" ] && { printf '%s' "$out"; return 0; }
+    fi
+  fi
+  return 1
+}
+
+# MTU, который docker раздаёт контейнерам. Опции нет — значит дефолт 1500.
+docker_bridge_mtu() {
+  local m
+  m="$(docker network inspect bridge --format '{{index .Options "com.docker.network.driver.mtu"}}' 2>/dev/null || true)"
+  case "$m" in
+    ''|'<no value>') printf '1500' ;;
+    *)               printf '%s' "$m" ;;
+  esac
+}
+
+# Хостовая половина сетевой проверки. В контейнере видно только СИМПТОМ
+# (крупный ответ висит), а причина живёт здесь: docker раздаёт контейнерам
+# MTU больше, чем канал наружу. Тогда мелкое ходит, крупное дропается молча —
+# и это в равной мере вешает установку расширений VS Code, pnpm install и
+# запросы Copilot. Проверять дёшево, а вручную никто не догадается.
+check_host_net() {
+  local up docker_mtu
+  docker_mtu="$(docker_bridge_mtu)"
+  if ! up="$(host_uplink_mtu)"; then
+    echo "сеть:       docker bridge MTU $docker_mtu (MTU канала не определить на этой ОС)"
+    return 0
+  fi
+  if [ "$docker_mtu" -gt "$up" ]; then
+    err "сеть: docker раздаёт контейнерам MTU $docker_mtu, а канал наружу — $up"
+    echo "    Крупные ответы в контейнерах будут висеть до таймаута (мелкие пройдут):" >&2
+    echo "    установка расширений VS Code, pnpm install, запросы Copilot." >&2
+    echo "    Чинить: /etc/docker/daemon.json → {\"mtu\": $up}, перезапуск демона," >&2
+    echo "    затем Rebuild Container." >&2
+    return 1
+  fi
+  echo "сеть:       docker bridge MTU $docker_mtu ≤ канал $up — контейнерам хватит"
+}
+
 check_container_net() {
   local mtu proxy
   mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null || true)"
@@ -773,6 +829,7 @@ cmd_doctor() {
     else
       echo "персист:    ~/.ai-devcontainer-dev нет (создастся при первом проекте)"
     fi
+    check_host_net || ok=0
   else
     echo "образ:      проверяется только на хосте (здесь docker — внутренний демон контейнера)"
     echo "персист:    проверяется только на хосте (~/.ai-devcontainer-dev — хостовый путь)"
