@@ -14,9 +14,14 @@
 #   проект     <repo>/.agents/skills/<skill>/…      — только то, чем проект отличается
 #
 # База форка (платформенная версия НА МОМЕНТ форка) лежит копией в
-# <repo>/.agents/skills-base/<skill>/…. Она нужна ровно для одного вопроса:
-# «платформа уехала с тех пор, как я форкнул?» — отвечается через cmp, без
-# реестров и без зависимости от jq/python.
+# <repo>/.ai-devcontainer/skills-base/<skill>/…. Она нужна ровно для одного
+# вопроса: «платформа уехала с тех пор, как я форкнул?» — отвечается через cmp,
+# без реестров и без зависимости от jq/python.
+#
+# Именно в .ai-devcontainer/, а не рядом с форками в .agents/: .agents — то, что
+# правит человек и читают агенты (DSH ходит в .agents/skills сам), а база — наша
+# служебная память, которую трогать руками незачем. Полное правило — в bin/adc,
+# секция «Где что лежит в проекте».
 
 set -euo pipefail
 
@@ -31,7 +36,16 @@ PLATFORM_ROOT="${AI_DEVCONTAINER_HOME:-/opt/ai-devcontainer}"
 PLATFORM_SKILLS="${AI_DEVCONTAINER_SKILLS:-$PLATFORM_ROOT/skills}"
 
 PROJECT_SKILLS="$REPO_ROOT/.agents/skills"
-BASE_DIR="$REPO_ROOT/.agents/skills-base"
+STATE_DIR="$REPO_ROOT/.ai-devcontainer"
+BASE_DIR="$STATE_DIR/skills-base"
+BASE_DIR_LEGACY="$REPO_ROOT/.agents/skills-base"
+
+# Переезд со старого места, разово и молча. Без него `status` у всех уже
+# форкнутых скиллов перестал бы видеть базу и начал бы отвечать «база не
+# найдена» на ровном месте — то есть сломал бы ровно то, ради чего заведён.
+if [ -d "$BASE_DIR_LEGACY" ] && [ ! -e "$BASE_DIR" ]; then
+  mkdir -p "$STATE_DIR" && mv "$BASE_DIR_LEGACY" "$BASE_DIR" 2>/dev/null || true
+fi
 
 C_GREEN='\033[0;32m'; C_YELLOW='\033[0;33m'; C_RED='\033[0;31m'; C_DIM='\033[2m'; C_RESET='\033[0m'
 log()  { echo -e "${C_GREEN}==>${C_RESET} $*"; }
@@ -68,11 +82,13 @@ ensure_gitignore() {
   # про платформу ничего не знает. Без этого блока первый же git status после
   # adopt показывает собранное дерево скиллов (десятки каталогов), стор pnpm и
   # выхлоп graphify как новые файлы — и часть из этого уезжает в коммит.
-  # Перечисляем ТОЧЕЧНО, а не весь .claude: проект вправе держать в нём
-  # собственный settings.json, и прятать его платформа не должна.
+  #
+  # Служебная память платформы — одной строкой /.ai-devcontainer/: ради этого
+  # она и собрана в свой каталог. Дерево скиллов перечисляем ТОЧЕЧНО, а не весь
+  # .claude: проект вправе держать там собственный settings.json.
   ignore_block "Раздаётся и генерируется платформой ai-devcontainer" \
+               "/.ai-devcontainer/" \
                ".claude/skills/" \
-               ".claude/.ai-devcontainer-mcp" \
                "/.dsh/" \
                "graphify-out/" \
                ".pnpm-store/" \

@@ -81,9 +81,9 @@ run_skill() {
 
 @test "status: форк актуален (база совпадает с платформой)" {
   make_platform_skill "demo" "SKILL.md" "v1"
-  mkdir -p "$REPO_DIR/.agents/skills/demo" "$REPO_DIR/.agents/skills-base/demo"
+  mkdir -p "$REPO_DIR/.agents/skills/demo" "$REPO_DIR/.ai-devcontainer/skills-base/demo"
   echo "v1-forked" > "$REPO_DIR/.agents/skills/demo/SKILL.md"
-  echo "v1" > "$REPO_DIR/.agents/skills-base/demo/SKILL.md"
+  echo "v1" > "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md"
   run_skill status
   assert_success
   assert_output --partial "форк актуален"
@@ -91,9 +91,9 @@ run_skill() {
 
 @test "status: платформа уехала (база отличается от текущей платформы)" {
   make_platform_skill "demo" "SKILL.md" "v2"
-  mkdir -p "$REPO_DIR/.agents/skills/demo" "$REPO_DIR/.agents/skills-base/demo"
+  mkdir -p "$REPO_DIR/.agents/skills/demo" "$REPO_DIR/.ai-devcontainer/skills-base/demo"
   echo "v1-forked" > "$REPO_DIR/.agents/skills/demo/SKILL.md"
-  echo "v1" > "$REPO_DIR/.agents/skills-base/demo/SKILL.md"
+  echo "v1" > "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md"
   run_skill status
   assert_success
   assert_output --partial "платформа уехала"
@@ -125,7 +125,7 @@ run_skill() {
   assert_output --partial "форк: .agents/skills/demo/SKILL.md"
 
   [ -f "$REPO_DIR/.agents/skills/demo/SKILL.md" ]
-  [ -f "$REPO_DIR/.agents/skills-base/demo/SKILL.md" ]
+  [ -f "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md" ]
   run cat "$WIRE_LOG"
   assert_output --partial "called"
 }
@@ -194,7 +194,7 @@ run_skill() {
   assert_success
   assert_output --partial "оставлено форков 1"
   [ -f "$REPO_DIR/.agents/skills/demo/SKILL.md" ]
-  [ -f "$REPO_DIR/.agents/skills-base/demo/SKILL.md" ]
+  [ -f "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md" ]
 }
 
 @test "migrate: свой скилл (нет на платформе) не трогается" {
@@ -262,4 +262,42 @@ run_skill() {
   run_skill bogus-command
   assert_failure
   assert_output --partial "Неизвестная команда"
+}
+
+# ── переезд служебной памяти в .ai-devcontainer/ ─────────────
+
+@test "migrate-state: база форков переезжает из .agents/skills-base" {
+  # Без переезда `status` у всех уже форкнутых скиллов начал бы отвечать
+  # «форк без базы» — то есть сломался бы ровно тот вопрос, ради которого он.
+  make_platform_skill "demo" "SKILL.md" "v1"
+  mkdir -p "$REPO_DIR/.agents/skills/demo" "$REPO_DIR/.agents/skills-base/demo"
+  echo "v1-forked" > "$REPO_DIR/.agents/skills/demo/SKILL.md"
+  echo "v1" > "$REPO_DIR/.agents/skills-base/demo/SKILL.md"
+
+  run_skill status
+  assert_success
+  assert_output --partial "форк актуален"
+  [ -f "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md" ]
+  [ ! -e "$REPO_DIR/.agents/skills-base" ]
+}
+
+@test "migrate-state: новая база уже есть — старую не затираем" {
+  make_platform_skill "demo" "SKILL.md" "v1"
+  mkdir -p "$REPO_DIR/.agents/skills-base/demo" "$REPO_DIR/.ai-devcontainer/skills-base/demo"
+  echo "old" > "$REPO_DIR/.agents/skills-base/demo/SKILL.md"
+  echo "new" > "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md"
+
+  run_skill status
+  assert_success
+  run cat "$REPO_DIR/.ai-devcontainer/skills-base/demo/SKILL.md"
+  assert_output "new"
+}
+
+@test "sync: служебная память игнорится одной строкой, а не пофайлово" {
+  make_platform_skill "demo"
+  printf 'node_modules\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+  run bash -c "grep -qxF '/.ai-devcontainer/' '$REPO_DIR/.gitignore'"
+  assert_success
 }

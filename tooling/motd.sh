@@ -66,8 +66,14 @@ if [ -f "$REPO/.hermes/bootstrap.sh" ] && [ -z "$(ls -A "$HOME/.hermes/profiles"
 fi
 
 PLAT="${AI_DEVCONTAINER_HOME:-/opt/ai-devcontainer}"
-if [ -f "$REPO/.claude/.platform-rev" ] && [ -d "$PLAT/.git" ]; then
-  APPLIED="$(cat "$REPO/.claude/.platform-rev" 2>/dev/null)"
+# Отметка переехала в .ai-devcontainer/ (служебная память платформы). Старое
+# место читаем как запасное и НЕ мигрируем: motd рисует баннер при каждом
+# запуске шелла, файлы за спиной у человека там двигать незачем — это сделает
+# ближайший adc sync.
+REV_FILE="$REPO/.ai-devcontainer/platform-rev"
+[ -f "$REV_FILE" ] || REV_FILE="$REPO/.claude/.platform-rev"
+if [ -f "$REV_FILE" ] && [ -d "$PLAT/.git" ]; then
+  APPLIED="$(cat "$REV_FILE" 2>/dev/null)"
   CURRENT="$(git -C "$PLAT" rev-parse --short HEAD 2>/dev/null)"
   if [ -n "$APPLIED" ] && [ -n "$CURRENT" ] && [ "$APPLIED" != "$CURRENT" ]; then
     N="$(git -C "$PLAT" rev-list --count "$APPLIED..$CURRENT" 2>/dev/null)"

@@ -198,3 +198,21 @@ EOF
   assert_output --partial "MCP пропускаю"
   [ ! -e "$marker" ]
 }
+
+# ── переезд отметки ревизии ──────────────────────────────────
+
+@test "migrate-state: platform-rev переезжает из .claude, список изменений не теряется" {
+  # Без переезда первый sync после обновления платформы сказал бы «первый sync
+  # в этом проекте — с чем сравнивать, пока нет», проглотив ровно тот список
+  # приехавшего, ради которого отметка и заведена.
+  mkdir -p "$PLATFORM_FIXTURE/tooling" "$REPO_DIR/.claude"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$PLATFORM_FIXTURE/tooling/skill.sh"
+  echo "deadbee" > "$REPO_DIR/.claude/.platform-rev"
+
+  run env AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" \
+      bash -c "cd '$REPO_DIR' && bash '$BIN' sync"
+  assert_success
+  [ -f "$REPO_DIR/.ai-devcontainer/platform-rev" ]
+  [ ! -e "$REPO_DIR/.claude/.platform-rev" ]
+  refute_output --partial "первый sync в этом проекте"
+}

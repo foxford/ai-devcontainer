@@ -206,3 +206,33 @@ EOF
   assert_output "no"
   rm -rf "$fake_bin"
 }
+
+@test "migrate-state: mcp-state переезжает из .claude и раздача продолжает обновляться" {
+  # Ключевой случай: state-файл на старом месте + уже лежащий .mcp.json. Без
+  # переезда сработала бы ветка «раскладывали его не мы», и .mcp.json навсегда
+  # замёрз бы на старом наборе серверов — молча.
+  seed_global
+  mkdir -p "$REPO_DIR/.claude"
+  echo "oldserver" > "$REPO_DIR/.claude/.ai-devcontainer-mcp"
+  echo '{"mcpServers":{"oldserver":{"command":"echo"}}}' > "$REPO_DIR/.mcp.json"
+
+  wire
+  assert_success
+  [ -f "$REPO_DIR/.ai-devcontainer/mcp-state" ]
+  [ ! -e "$REPO_DIR/.claude/.ai-devcontainer-mcp" ]
+
+  run jq -r '.mcpServers | has("srv")' "$REPO_DIR/.mcp.json"
+  assert_output "true"
+  run jq -r '.mcpServers | has("oldserver")' "$REPO_DIR/.mcp.json"
+  assert_output "false"
+}
+
+@test "чужой .mcp.json без state-файла по-прежнему не трогаем" {
+  seed_global
+  echo '{"mcpServers":{"handmade":{"command":"echo"}}}' > "$REPO_DIR/.mcp.json"
+
+  wire
+  assert_success
+  run jq -r '.mcpServers | has("handmade")' "$REPO_DIR/.mcp.json"
+  assert_output "true"
+}

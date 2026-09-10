@@ -104,11 +104,34 @@ repo_root() {
   echo "$d"
 }
 
-# Отметка «какую ревизию платформы этот проект уже применил». Лежит в .claude/
-# (генерируемое, в .gitignore) — переживает пересборку дерева скиллов и не
-# создаёт дифов в трекаемых файлах. По ней sync показывает, ЧТО именно
-# приехало, а motd подсказывает, что платформа уехала вперёд.
-REV_STAMP=".claude/.platform-rev"
+# ── Где что лежит в проекте ───────────────────────────────────
+# Правило одно, чтобы не решать заново на каждый новый файл:
+#
+#   читает АГЕНТ    → туда, где агент смотрит   .claude/skills, .dsh/skills, .mcp.json
+#   правит ЧЕЛОВЕК  → .agents/                  mcp.json, форки скиллов, секреты
+#   пишет только ADC → .ai-devcontainer/        platform-rev, mcp-state, skills-base
+#
+# Первая строка — не наш выбор, её диктуют агенты. Вторая — общая с ними
+# конвенция (DSH читает .agents/skills сам, роут ранга 200), трогать нельзя.
+# Третья — наша служебная память, и раньше она лежала в .claude/: каталог чужой,
+# и человек, снёсший его при проблемах с Claude Code, молча ломал раздачу MCP.
+STATE_DIR=".ai-devcontainer"
+
+# Отметка «какую ревизию платформы этот проект уже применил». По ней sync
+# показывает, ЧТО именно приехало, а motd подсказывает, что платформа уехала.
+REV_STAMP="$STATE_DIR/platform-rev"
+REV_STAMP_LEGACY=".claude/.platform-rev"
+
+# Переезд со старого места. Без него первый sync после обновления платформы
+# показал бы «первый sync в этом проекте — с чем сравнивать, пока нет»,
+# то есть проглотил бы ровно тот список изменений, ради которого и заведён.
+migrate_rev_stamp() {
+  local root="$1" old="$1/$REV_STAMP_LEGACY" new="$1/$REV_STAMP"
+  [ -f "$old" ] || return 0
+  [ -e "$new" ] && return 0
+  mkdir -p "$(dirname "$new")" 2>/dev/null || return 0
+  mv "$old" "$new" 2>/dev/null || return 0
+}
 
 # Один и тот же CLI живёт на хосте (~/.local/bin из install.sh) и внутри
 # контейнера (симлинк на /opt/ai-devcontainer/bin, кладёт post-create) — чтобы имя
@@ -617,6 +640,7 @@ cmd_sync() {
     echo >&2
   fi
 
+  migrate_rev_stamp "$root"
   local stamp="$root/$REV_STAMP" was="" now
   now="$(platform_rev)"
   [ -f "$stamp" ] && was="$(cat "$stamp" 2>/dev/null || true)"

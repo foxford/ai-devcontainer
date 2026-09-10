@@ -187,3 +187,8 @@ AGENTS.skills.md
 /.agents/skills/README.md
 /plans/README.md
 /.agents/mcp.secrets.env.example
+
+# Раздаётся и генерируется платформой ai-devcontainer
+/.ai-devcontainer/
+.claude/skills/
+/strix_runs/

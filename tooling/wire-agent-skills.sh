@@ -316,7 +316,7 @@ extract_field() {
   printf 'adc skill sync                   # пересобрать после adc update\n'
   printf '```\n\n'
   printf 'Перекрыть можно любой файл, не только `SKILL.md`. Форк фиксирует базовую\n'
-  printf 'версию в `.agents/skills-base/` — по ней `status` видит, что апстрим уехал.\n'
+  printf 'версию в `.ai-devcontainer/skills-base/` — по ней `status` видит, что апстрим уехал.\n'
   printf 'Свой скилл проекта — просто каталог с `SKILL.md` в `.agents/skills/`.\n\n'
   printf 'Пометка **(форк)** — проект перекрывает часть файлов платформенного скилла.\n\n'
   for name in "${SKILL_NAMES[@]}"; do
