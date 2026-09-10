@@ -240,6 +240,38 @@ write_server() {
      "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
+# ── Секреты, вписанные литералом ─────────────────────────────
+# Проектный слой — единственный из четырёх, который лежит В ГИТЕ: в этом его
+# смысл. Значит вписанный туда токен уезжает всей команде и в историю, откуда
+# его уже не вынуть — только отзывать. Поэтому литералы там ловим и выносим.
+#
+# Эвристика по имени поля плюс форма значения (Bearer/Basic + длинный хвост).
+# Значение с ${} не трогаем: это и есть правильный способ.
+SECRET_KEY_RE='authorization|token|api[_-]?key|apikey|secret|password|passwd'
+
+# Печатает TSV: путь-через-точку \t значение — для каждого литерального секрета.
+find_literal_secrets() {
+  jq -r --arg re "$SECRET_KEY_RE" '
+    def looks_secret($k; $v):
+      ($k | ascii_downcase | test($re))
+      or ($v | test("^(Bearer|Basic|Token)[[:space:]]+[^[:space:]]{12,}$"));
+    paths(type == "string") as $p
+    | { k: ($p[-1] | tostring), v: getpath($p), path: ($p | map(tostring) | join(".")) }
+    | select(.v | test("\\$\\{") | not)
+    | select(.v | length > 0)
+    | select(looks_secret(.k; .v))
+    | [.path, .v] | @tsv' "$1" 2>/dev/null || true
+}
+
+# Имя переменной из имени сервера и поля: DIRECTUS_AUTHORIZATION и т.п.
+# Читаемое имя важнее короткого — оно потом стоит в .agents/mcp.secrets.env,
+# и человек должен понимать, к чему эта строка, без сверки с конфигом.
+secret_var_name() {
+  local server="$1" field="$2" name
+  name="$(printf '%s_%s' "$server" "$field" | tr 'a-z-' 'A-Z_' | tr -cd 'A-Z0-9_')"
+  printf '%s' "$name"
+}
+
 # Массив строк в JSON. Через `jq --args` не выходит: jq продолжает разбирать
 # опции после фильтра и спотыкается о первый же аргумент, начинающийся с «-».
 json_array() {
@@ -317,6 +349,31 @@ cmd_add() {
 
   scope="$(pick_scope "$scope")"
   ensure_layer_writable "$scope"
+
+  # Литеральный секрет в проектный слой не пускаем: этот файл лежит в гите, и
+  # вписанный токен уедет всей команде и в историю. Не отказываем — молча
+  # делаем правильно: значение в секреты, в слой ${ИМЯ}. Отказ тут был бы хуже:
+  # человек скопировал рабочий сниппет и не обязан знать про наши слои.
+  if [ "$scope" = project ]; then
+    local sfile spath svalue sfield svar sscheme ssecret
+    sfile="$(secrets_file "$scope")"
+    while IFS=$'\t' read -r spath svalue; do
+      [ -n "$spath" ] || continue
+      sfield="$(printf '%s' "$spath" | awk -F. '{print $NF}')"
+      svar="$(secret_var_name "$name" "$sfield")"
+      sscheme=""; ssecret="$svalue"
+      if [[ "$svalue" =~ ^(Bearer|Basic|Token)[[:space:]]+(.+)$ ]]; then
+        sscheme="${BASH_REMATCH[1]} "; ssecret="${BASH_REMATCH[2]}"
+      fi
+      mkdir -p "$(dirname "$sfile")"
+      touch "$sfile" && chmod 600 "$sfile" 2>/dev/null || true
+      grep -qE "^[[:space:]]*(export[[:space:]]+)?${svar}=" "$sfile" 2>/dev/null \
+        || printf '%s=%s\n' "$svar" "$ssecret" >> "$sfile"
+      body="$(echo "$body" | jq -c --arg p "$spath" --arg repl "${sscheme}\${${svar}}" \
+              'setpath($p | split(".") | map(if test("^[0-9]+$") then tonumber else . end); $repl)')"
+      warn "секрет в $sfield вынесен в \${$svar} — слой команды лежит в гите"
+    done < <(printf '%s' "$body" | find_literal_secrets /dev/stdin)
+  fi
 
   local file; file="$(scope_file "$scope")"
   if jq -e --arg n "$name" '.mcpServers[$n]' "$file" >/dev/null 2>&1; then
@@ -464,6 +521,56 @@ cmd_disable() {
 # Раздача после правки слоя. Хронику глушим: человек только что попросил
 # «добавь сервер», и двадцать строк про остальные серверы — это тот самый шум,
 # из-за которого вывод перестают читать. Итог и предупреждения остаются.
+# ── fix-secrets ──────────────────────────────────────────────
+# Вынести литеральные секреты из слоя в файл секретов, оставив ${ИМЯ}.
+# Значение сохраняем целиком, кроме схемы: «Bearer xxx» → «Bearer ${VAR}», а не
+# «${VAR}» с Bearer'ом внутри — иначе переменная перестаёт быть просто токеном
+# и её нельзя переиспользовать в другом сервере.
+cmd_fix_secrets() {
+  local scope="${1:---project}"
+  case "$scope" in --user) scope=user ;; --project|"") scope=project ;; --local) scope=local ;;
+                   *) err "неизвестный флаг: $scope"; exit 1 ;; esac
+
+  local file sfile; file="$(scope_file "$scope")"; sfile="$(secrets_file "$scope")"
+  [ -f "$file" ] || { log "слой «$scope» пуст — выносить нечего"; return 0; }
+
+  local found=0 path value server field var scheme secret tmp
+  while IFS=$'\t' read -r path value; do
+    [ -n "$path" ] || continue
+    found=1
+    # path вида mcpServers.<сервер>.headers.Authorization
+    server="$(printf '%s' "$path" | cut -d. -f2)"
+    field="$(printf '%s' "$path" | awk -F. '{print $NF}')"
+    var="$(secret_var_name "$server" "$field")"
+
+    scheme=""; secret="$value"
+    if [[ "$value" =~ ^(Bearer|Basic|Token)[[:space:]]+(.+)$ ]]; then
+      scheme="${BASH_REMATCH[1]} "; secret="${BASH_REMATCH[2]}"
+    fi
+
+    mkdir -p "$(dirname "$sfile")"
+    touch "$sfile" && chmod 600 "$sfile" 2>/dev/null || true
+    if grep -qE "^[[:space:]]*(export[[:space:]]+)?${var}=" "$sfile" 2>/dev/null; then
+      warn "$var уже есть в $(short_path "$sfile") — оставляю прежнее значение"
+    else
+      printf '%s=%s\n' "$var" "$secret" >> "$sfile"
+    fi
+
+    tmp="$file.tmp.$$"
+    jq --arg p "$path" --arg repl "${scheme}\${${var}}" \
+       'setpath($p | split(".") | map(if test("^[0-9]+$") then tonumber else . end); $repl)' \
+       "$file" > "$tmp" && mv "$tmp" "$file"
+    log "$path → \${$var} (значение в $(short_path "$sfile"))"
+  done < <(find_literal_secrets "$file")
+
+  if [ "$found" = 0 ]; then
+    log "литеральных секретов в слое «$scope» нет"
+    return 0
+  fi
+  warn "если слой уже закоммичен — токен надо ОТОЗВАТЬ: он в истории гита"
+  run_sync
+}
+
 run_sync() {
   MCP_QUIET=1 REPO_ROOT="$REPO_ROOT" bash "$WIRE"
   dim "перезапусти агента (claude / codex / hermes / dsh) — серверы читаются на старте"
@@ -479,6 +586,7 @@ adc mcp — MCP-серверы проекта
   enable <имя> [слой]         включить (спросит недостающий токен)
   disable <имя> [слой]        выключить, перекрыв нижний слой
   sync                        пересобрать конфиги агентов
+  fix-secrets [слой]          вынести вписанные литералом токены в секреты
 
 Слои (снизу вверх; проектное бьёт глобальное, моё бьёт общее):
   --global    платформа, приезжает с devcontainer'ом      только чтение
@@ -500,6 +608,7 @@ case "${1:-list}" in
   enable)  shift; cmd_enable "$@" ;;
   disable) shift; cmd_disable "$@" ;;
   sync)    shift; run_sync ;;
+  fix-secrets) shift; cmd_fix_secrets "$@" ;;
   help|-h|--help) usage ;;
   *) err "неизвестная команда: $1"; usage; exit 1 ;;
 esac

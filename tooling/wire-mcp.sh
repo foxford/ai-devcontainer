@@ -409,6 +409,40 @@ COUNT="$(echo "$MERGED" | jq -r 'length')"
 UNRESOLVED="$(echo "$MERGED" | jq -r '[paths(type=="string") as $p | getpath($p) | select(test("\\$\\{"))] | unique | join(", ")')"
 [ -n "$UNRESOLVED" ] && warn "нераскрытые подстановки: $UNRESOLVED (добавь значение в $SECRETS_FILE или отсеки сервер через x-requires)"
 
+# ── 4b. Литеральный секрет в слое, который лежит В ГИТЕ ───────
+# Проектный слой — единственный из четырёх, который коммитится: в этом весь его
+# смысл (сервер команды получает вся команда). Обратная сторона — вписанный
+# туда руками токен уезжает в общий репозиторий, и отозвать его придётся, даже
+# если коммит потом убрать: он уже в истории и у всех, кто успел спуллить.
+#
+# Значение с ${} не трогаем — это и есть правильный способ. Ругаемся только на
+# литералы, и только в проектном слое: в локальном и пользовательском токен
+# лежит на диске так же, как в самом файле секретов, и гитом не грозит.
+leaked_secrets() {
+  jq -r '
+    def looks_secret($k; $v):
+      ($k | ascii_downcase | test("authorization|token|api[_-]?key|apikey|secret|password|passwd"))
+      or ($v | test("^(Bearer|Basic|Token)[[:space:]]+[^[:space:]]{12,}$"));
+    [ paths(type == "string") as $p
+      | { k: ($p[-1] | tostring), v: getpath($p), path: ($p | map(tostring) | join(".")) }
+      | select(.v | test("\\$\\{") | not)
+      | select(.v | length > 0)
+      | select(looks_secret(.k; .v))
+      | .path ]
+    | unique | .[]' "$1" 2>/dev/null || true
+}
+
+if [ -f "$PROJECT_MCP" ]; then
+  LEAKED="$(leaked_secrets "$PROJECT_MCP")"
+  if [ -n "$LEAKED" ]; then
+    warn "в .agents/mcp.json вписан секрет ОТКРЫТЫМ ТЕКСТОМ, а этот файл лежит в гите:"
+    while IFS= read -r p; do [ -n "$p" ] && warn "    $p"; done <<< "$LEAKED"
+    warn "  Как надо: значение — \${ИМЯ}, само значение — в .agents/mcp.secrets.env (он в .gitignore)."
+    warn "  Починить: adc mcp fix-secrets   (вынесет значения в секреты, в слое оставит \${ИМЯ})"
+    warn "  Если уже закоммичено — токен отзывать: он в истории и у всех, кто спуллил."
+  fi
+fi
+
 # ── 4a. Режим плана: отдать посчитанное и выйти, ничего не записав ──
 # Секретов в выводе нет: серверы отдаём «как объявлены в слое», ДО подстановки
 # значений. Иначе `adc mcp list` показывал бы токен на экране, а его вывод

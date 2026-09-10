@@ -198,3 +198,76 @@ EOF
   assert_success
   refute_output --partial "super-secret-value"
 }
+
+# ── секреты и слой, который лежит в гите ─────────────────────
+# Проектный слой — единственный коммитится. Вписанный туда токен уезжает всей
+# команде и в историю, откуда его уже не вынуть — только отзывать.
+
+SECRET_SNIPPET='{"type":"http","url":"http://x/mcp","headers":{"Authorization":"Bearer 37159574b6c8cb6047ec454eefe90ab"}}'
+
+@test "add --project: литеральный токен выносится в секреты, в слой идёт \${ИМЯ}" {
+  mcp add directus --project --json "$SECRET_SNIPPET"
+  assert_success
+  run jq -r '.mcpServers.directus.headers.Authorization' "$PROJECT_LAYER"
+  assert_output 'Bearer ${DIRECTUS_AUTHORIZATION}'
+  run grep -c "^DIRECTUS_AUTHORIZATION=37159574b6c8cb6047ec454eefe90ab$" "$REPO_DIR/.agents/mcp.secrets.env"
+  assert_output "1"
+}
+
+@test "add --project: сам токен в git-слой не попадает ни в каком виде" {
+  mcp add directus --project --json "$SECRET_SNIPPET"
+  assert_success
+  run cat "$PROJECT_LAYER"
+  refute_output --partial "37159574b6c8cb6047ec454eefe90ab"
+}
+
+@test "add --local: токен не трогаем — слой и так в .gitignore" {
+  mcp add mine --local --json "$SECRET_SNIPPET"
+  assert_success
+  run jq -r '.mcpServers.mine.headers.Authorization' "$LOCAL_LAYER"
+  assert_output "Bearer 37159574b6c8cb6047ec454eefe90ab"
+}
+
+@test "sync ругается на секрет, вписанный в .agents/mcp.json руками" {
+  printf '%s\n' '{"mcpServers":{"directus":'"$SECRET_SNIPPET"'}}' > "$PROJECT_LAYER"
+  mcp sync
+  assert_success
+  assert_output --partial "ОТКРЫТЫМ ТЕКСТОМ"
+  assert_output --partial "mcpServers.directus.headers.Authorization"
+  assert_output --partial "отзывать"
+}
+
+@test "sync молчит, когда в слое \${ИМЯ}, а не значение" {
+  printf '%s\n' '{"mcpServers":{"d":{"type":"http","url":"http://x/mcp","headers":{"Authorization":"Bearer ${TOK}"}}}}' > "$PROJECT_LAYER"
+  mcp sync
+  assert_success
+  refute_output --partial "ОТКРЫТЫМ ТЕКСТОМ"
+}
+
+@test "fix-secrets: выносит вписанное руками и сервер продолжает работать" {
+  printf '%s\n' '{"mcpServers":{"directus":'"$SECRET_SNIPPET"'}}' > "$PROJECT_LAYER"
+  mcp fix-secrets
+  assert_success
+  run jq -r '.mcpServers.directus.headers.Authorization' "$PROJECT_LAYER"
+  assert_output 'Bearer ${DIRECTUS_AUTHORIZATION}'
+  # Главное: агент по-прежнему получает рабочее значение
+  run jq -r '.mcpServers.directus.headers.Authorization' "$REPO_DIR/.mcp.json"
+  assert_output "Bearer 37159574b6c8cb6047ec454eefe90ab"
+}
+
+@test "fix-secrets: выносить нечего — говорит об этом, файл не портит" {
+  mcp add plain --project -- node x.js
+  assert_success
+  mcp fix-secrets
+  assert_success
+  assert_output --partial "нет"
+  run jq -r '.mcpServers.plain.command' "$PROJECT_LAYER"
+  assert_output "node"
+}
+
+@test "env-переменная с токеном в git-слое тоже ловится" {
+  printf '%s\n' '{"mcpServers":{"s":{"command":"node","env":{"API_TOKEN":"abcdef0123456789"}}}}' > "$PROJECT_LAYER"
+  mcp sync
+  assert_success
+  assert_output --partial "ОТКРЫТЫМ ТЕКСТОМ"
+}
