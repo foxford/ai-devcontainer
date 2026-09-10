@@ -549,6 +549,25 @@ cmd_adopt_devcontainer() {
   mkdir -p "$existing"
   cp -a "$src/.devcontainer/." "$existing/"
   apply_scaffold_rename "$src/.scaffold.json" "$root" "$name" ".devcontainer/"
+
+  # Проектный Dockerfile COPY'ит из корня репозитория манифесты (package.json,
+  # .tool-versions). У скелетона они есть по построению, у усыновляемого репо —
+  # не обязательно, и отсутствие всплывает не здесь, а на сборке контейнера
+  # чужой ошибкой BuildKit, по которой про adopt не догадаться:
+  #     failed to compute cache key: "/.tool-versions": not found
+  # Поэтому недостающее досеиваем сразу. Список — в .scaffold.json ("seed"),
+  # источник — сам скаффолд: реестр остаётся единственным местом, которое знает,
+  # из чего состоит проект этого типа.
+  local seed_count j seed_file
+  seed_count="$(jq '(.seed // []) | length' "$src/.scaffold.json" 2>/dev/null || echo 0)"
+  for ((j = 0; j < seed_count; j++)); do
+    seed_file="$(jq -r ".seed[$j]" "$src/.scaffold.json")"
+    [ -e "$root/$seed_file" ] && continue
+    [ -f "$src/$seed_file" ] || { warn "скаффолд: нечего досеивать, в шаблоне нет $seed_file"; continue; }
+    cp "$src/$seed_file" "$root/$seed_file"
+    log "  досеял $seed_file (без него сборка контейнера упала бы на COPY)"
+    echo "    Содержимое — дефолт платформы, проверь под свой проект: $(tr '\n' ' ' < "$root/$seed_file")" >&2
+  done
 }
 
 cmd_sync() {
@@ -737,6 +756,30 @@ check_project_devcontainer() {
     miss=1; warn "  нет маунта под ~/.dsh → профили, сессии и MCP DeepSeek Harness не переживут rebuild"
     echo '      "source=${localEnv:HOME}/.ai-devcontainer-dev/<проект>/dsh,target=/home/node/.dsh,type=bind,consistency=cached"' >&2
   fi
+  # Файлы, которые проектный Dockerfile COPY'ит из контекста сборки. Пропавший
+  # роняет rebuild задолго до postCreate — и роняет ошибкой BuildKit, по которой
+  # про devcontainer не догадаться:
+  #     failed to compute cache key: "/.tool-versions": not found
+  # Типичный источник — усыновлённый репозиторий: `sync --adopt` копирует только
+  # .devcontainer/, манифесты в корне остаются проектными. Проверка идёт и в
+  # prepare (то есть в том же логе, где сборка потом падает), поэтому диагноз
+  # человек видит раньше причины.
+  local df="$root/.devcontainer/Dockerfile" copy_src
+  if [ -f "$df" ] && has '"context": ".."'; then
+    # Только однострочные COPY из контекста сборки: `--from=<стадия>` берёт файлы
+    # из другого слоя, а шаблоны и ${ARG} проверять нечем — молчим про них.
+    while IFS= read -r copy_src; do
+      [ -n "$copy_src" ] || continue
+      [ -e "$root/$copy_src" ] && continue
+      miss=1; warn "  Dockerfile COPY'ит «$copy_src», а в корне проекта его нет → сборка упадёт на «failed to compute cache key»"
+      case "$copy_src" in
+        .tool-versions) echo "      Это версия Node проекта, одна строка: echo 'nodejs 26.5.0' > .tool-versions" >&2 ;;
+      esac
+    done < <(awk 'toupper($1) == "COPY" && $0 !~ /--from=/ {
+                    for (i = 2; i < NF; i++) if ($i !~ /^--/ && $i !~ /[*?$[]/) print $i
+                  }' "$df")
+  fi
+
   # docker спрашиваем только с тех, кому он нужен: наличие compose-файла в репо
   if [ -n "$(find "$root" -maxdepth 3 \( -name node_modules -o -name .git \) -prune -o \
              \( -name 'docker-compose*.y*ml' -o -name 'compose*.y*ml' \) -print -quit 2>/dev/null)" ] \

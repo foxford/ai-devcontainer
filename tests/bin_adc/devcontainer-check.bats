@@ -78,6 +78,52 @@ EOF
   assert_output --partial "браузеры Playwright"
 }
 
+# COPY-манифесты: усыновлённый репозиторий без .tool-versions собирается до
+# «failed to compute cache key», и по этой ошибке про devcontainer не догадаться.
+copy_dockerfile() {
+  cat > "$REPO_DIR/.devcontainer/devcontainer.json" <<'EOF'
+{
+  "initializeCommand": "adc prepare",
+  "build": { "dockerfile": "Dockerfile", "context": ".." }
+}
+EOF
+  printf 'FROM dev-base:local\nCOPY --chown=node:node package.json .tool-versions /tmp/repo/\n' \
+    > "$REPO_DIR/.devcontainer/Dockerfile"
+}
+
+@test "Dockerfile COPY'ит файл, которого нет в корне — предупреждение с диагнозом" {
+  mkdir -p "$REPO_DIR/.devcontainer"
+  copy_dockerfile
+  echo '{}' > "$REPO_DIR/package.json"
+  run_doctor
+  assert_success
+  assert_output --partial ".tool-versions"
+  assert_output --partial "failed to compute cache key"
+  refute_output --partial "COPY'ит «package.json»"
+}
+
+@test "все COPY-манифесты на месте — про них молчим" {
+  mkdir -p "$REPO_DIR/.devcontainer"
+  copy_dockerfile
+  echo '{}' > "$REPO_DIR/package.json"
+  echo "nodejs 26.5.0" > "$REPO_DIR/.tool-versions"
+  run_doctor
+  assert_success
+  refute_output --partial "failed to compute cache key"
+}
+
+@test "COPY --from=<стадия> и шаблоны не проверяются: они не из контекста" {
+  mkdir -p "$REPO_DIR/.devcontainer"
+  copy_dockerfile
+  echo '{}' > "$REPO_DIR/package.json"
+  echo "nodejs 26.5.0" > "$REPO_DIR/.tool-versions"
+  printf 'COPY --from=builder /app/dist /srv\nCOPY pnpm-lock*.yaml /tmp/\n' \
+    >> "$REPO_DIR/.devcontainer/Dockerfile"
+  run_doctor
+  assert_success
+  refute_output --partial "failed to compute cache key"
+}
+
 @test "docker-compose в репо без docker-in-docker feature — предупреждение" {
   mkdir -p "$REPO_DIR/.devcontainer"
   full_devcontainer_json

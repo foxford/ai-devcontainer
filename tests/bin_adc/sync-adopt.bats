@@ -69,6 +69,23 @@ run_sync() {
   assert_output --partial "$(basename "$REPO_DIR")"
 }
 
+@test "sync --adopt: досеивает .tool-versions — иначе COPY в Dockerfile не найдёт его в контексте" {
+  run_sync --adopt
+  assert_success
+  assert_output --partial "досеял .tool-versions"
+  run cat "$REPO_DIR/.tool-versions"
+  assert_output --partial "nodejs"
+}
+
+@test "sync --adopt: свой .tool-versions не перезаписывается" {
+  echo "nodejs 20.11.0" > "$REPO_DIR/.tool-versions"
+  run_sync --adopt
+  assert_success
+  refute_output --partial "досеял .tool-versions"
+  run cat "$REPO_DIR/.tool-versions"
+  assert_output "nodejs 20.11.0"
+}
+
 @test "sync --adopt: уже есть непустой .devcontainer/ — отказ" {
   mkdir -p "$REPO_DIR/.devcontainer"
   echo '{"name": "manual"}' > "$REPO_DIR/.devcontainer/devcontainer.json"

@@ -12,7 +12,7 @@
 | `skills/` | **стоковые тех-скиллы платформы** — раздаются во все проекты overlay'ем, в проект НЕ копируются |
 | `mcp/` | **стоковые MCP-серверы платформы** (`servers.json`) — раздаются тем же overlay'ем на Claude + Codex + Hermes + DSH |
 | `docs/` | **платформенные доки проекта**: `AGENTS.platform.md` (контракт для агентов), `MONOREPO.md`, README слоя скиллов, README каталога планов, образец секретов MCP — раздаются симлинками. Раздаётся не всё: список в `tooling/wire-docs.sh`, остальное (`devcontainer-delivery.md`) — про устройство самой платформы |
-| `skeleton/<type>/` | **реестр скаффолдов** — источник правды о проекте каждого типа: `.scaffold.json` (label + подстановка имени) плюс сам шаблон. Сейчас один тип, `pnpm-monorepo/`: монорепа (Nx+pnpm), пакеты `@foxford/*`, `.hermes`; `.agents/skills` в нём пустой — под проектные форки |
+| `skeleton/<type>/` | **реестр скаффолдов** — источник правды о проекте каждого типа: `.scaffold.json` (label + подстановка имени + `seed` — файлы, которые `sync --adopt` досеивает в чужой репозиторий) плюс сам шаблон. Сейчас один тип, `pnpm-monorepo/`: монорепа (Nx+pnpm), пакеты `@foxford/*`, `.hermes`; `.agents/skills` в нём пустой — под проектные форки |
 | `bin/adc` | CLI: new / ensure-image / update / doctor / skill / mcp / plans |
 | `install.sh` | бутстрап машины разработчика (`curl \| bash`) |
 | `tests/` | bats-тесты на `tooling/*.sh` + `bin/adc`; `tests/bats/lib/` — сами фреймворки (bats-core/-support/-assert, git submodules), не трогать руками |

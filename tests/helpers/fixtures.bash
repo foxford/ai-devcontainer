@@ -25,6 +25,7 @@ make_platform_fixture() {
   cat > "$dir/skeleton/pnpm-monorepo/.scaffold.json" <<'EOF'
 {
   "label": "Node/TS монорепа (тестовая фикстура)",
+  "seed": [".tool-versions"],
   "rename": [
     { "file": "package.json", "pattern": "\"my-project\"", "replace": "\"{{NAME}}\"" },
     { "file": ".devcontainer/devcontainer.json", "pattern": "MyProject", "replace": "{{NAME}}" },
@@ -33,13 +34,15 @@ make_platform_fixture() {
 }
 EOF
   echo '{"name": "my-project"}' > "$dir/skeleton/pnpm-monorepo/package.json"
+  echo "nodejs 26.5.0" > "$dir/skeleton/pnpm-monorepo/.tool-versions"
   cat > "$dir/skeleton/pnpm-monorepo/.devcontainer/devcontainer.json" <<'EOF'
 {
   "name": "MyProject",
   "initializeCommand": "adc prepare || \"$HOME/.local/bin/adc\" prepare"
 }
 EOF
-  echo "FROM scratch" > "$dir/skeleton/pnpm-monorepo/.devcontainer/Dockerfile"
+  printf 'FROM scratch\nCOPY --chown=node:node package.json .tool-versions /tmp/repo/\n' \
+    > "$dir/skeleton/pnpm-monorepo/.devcontainer/Dockerfile"
   mkdir -p "$dir/skills"
   mkdir -p "$dir/mcp"
   echo '{"mcpServers": {}}' > "$dir/mcp/servers.json"
