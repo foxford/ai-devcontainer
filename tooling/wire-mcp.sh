@@ -97,8 +97,26 @@ TOOLING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_ROOT="$(dirname "$TOOLING_DIR")"
 cd "$REPO_ROOT"
 
+# ЧЕТЫРЕ СЛОЯ, снизу вверх по приоритету. Порядок не произволен: проектное
+# бьёт глобальное, моё бьёт общее — обе оси упорядочены одинаково, поэтому
+# правило запоминается одной фразой и не требует сверки с таблицей.
+#
+#   глобальный      платформа, раздаётся devcontainer'ом  (общий,   везде)
+#   пользовательский мои серверы во всех моих проектах     (личный,  везде)
+#   проектный        серверы команды, лежат в гите         (общий,   здесь)
+#   локальный        мои серверы только в этом проекте     (личный,  здесь)
+#
+# Имена слоёв — те же, что у `claude mcp add --scope`: человек, знающий любой
+# из четырёх агентов, читает вывод без перевода.
 PLATFORM_MCP="${AI_DEVCONTAINER_MCP:-$PLATFORM_ROOT/mcp/servers.json}"
+# Пользовательский слой живёт в /opt/ai-tools — том platform-ai-tools общий на
+# все проекты и уже примонтирован даже в заведённые до этой функции, так что
+# devcontainer.json править не пришлось. Тот же трюк, что у hermes-auth.sh.
+USER_STORE="${AI_DEVCONTAINER_MCP_STORE:-/opt/ai-tools/share/mcp}"
+USER_MCP="$USER_STORE/servers.json"
+USER_SECRETS="$USER_STORE/secrets.env"
 PROJECT_MCP="$REPO_ROOT/.agents/mcp.json"
+LOCAL_MCP="$REPO_ROOT/.agents/mcp.local.json"
 SECRETS_FILE="$REPO_ROOT/.agents/mcp.secrets.env"
 CLAUDE_MCP="$REPO_ROOT/.mcp.json"
 HERMES_CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
@@ -111,15 +129,48 @@ log()  { echo -e "${C_GREEN}==>${C_RESET} $*"; }
 warn() { echo -e "${C_YELLOW}!! ${C_RESET}$*" >&2; }
 dim()  { echo -e "${C_DIM}$*${C_RESET}"; }
 
-command -v jq >/dev/null 2>&1 || { warn "нет jq — MCP не раздаю"; exit 0; }
+# Два режима. Без аргументов — раздача (всё, что было). `--dump-plan` считает
+# ровно то же самое и печатает результат JSON'ом, НИЧЕГО не записывая: на нём
+# живёт `adc mcp list`. Отдельного «своего» мерджа у list'а нет намеренно —
+# картинка, расходящаяся с реальностью, хуже отсутствия картинки.
+MODE="sync"
+case "${1:-}" in
+  ""|sync)     MODE="sync" ;;
+  --dump-plan) MODE="plan" ;;
+  *) echo "wire-mcp.sh: неизвестный аргумент «$1» (ожидаю: sync | --dump-plan)" >&2; exit 2 ;;
+esac
+
+command -v jq >/dev/null 2>&1 || { warn "нет jq — MCP не раздаю"; [ "$MODE" = plan ] && echo '{"error":"no-jq"}'; exit 0; }
+
+# В режиме плана stdout занят JSON — человеческий вывод там неуместен целиком
+# (warn и так уходит в stderr, а log/dim писали в stdout и порвали бы разбор).
+if [ "$MODE" = plan ]; then
+  log() { :; }
+  dim() { :; }
+fi
+
+# MCP_QUIET=1 — гасим построчную хронику раздачи, оставляя итог и предупреждения.
+# Нужен, когда раздачу дёргает не человек, а соседняя команда (`adc mcp add`):
+# там на экране важно «сервер добавлен», а не двадцать строк про остальные
+# серверы, к которым человек сейчас отношения не имеет.
+if [ "${MCP_QUIET:-}" = 1 ]; then
+  dim() { :; }
+fi
 
 # Репозиторий платформы, открытый сам в себе — не раздаём, и это не лень.
 # У платформы `.agents` — симлинк в `skeleton/.agents`, то есть «проектным
 # слоем» тут оказался бы шаблон новых проектов: любое локальное перекрытие
 # уехало бы во ВСЕ проекты, созданные дальше. Разводить эти два смысла дороже,
 # чем обойтись без MCP при разработке самой платформы.
-if [ "$(readlink -f "$REPO_ROOT")" = "$(readlink -f "$PLATFORM_ROOT")" ]; then
+#
+# Сравниваем через cd+pwd, а НЕ через `readlink -f`: этот скрипт зовётся и с
+# хоста (`adc mcp list`), а на macOS у readlink нет -f — обе подстановки дают
+# пустую строку, сравнение "" = "" совпадает, и платформой объявляется любой
+# проект. Тот же приём, что abs_dir() в bin/adc.
+abs_dir() { (cd "$1" 2>/dev/null && pwd) || printf '%s' "$1"; }
+if [ "$(abs_dir "$REPO_ROOT")" = "$(abs_dir "$PLATFORM_ROOT")" ]; then
   dim "  это репозиторий платформы — MCP не раздаю"
+  [ "$MODE" = plan ] && echo '{"platform_repo":true}'
   exit 0
 fi
 
@@ -127,7 +178,7 @@ fi
 # Именно здесь, в основном шелле: ниже слои читаются в подстановке команд, а
 # `exit` внутри неё убивает только подоболочку — скрипт поехал бы дальше с
 # пустым вводом и неразборчивым «invalid JSON text passed to --argjson».
-for layer in "$PLATFORM_MCP" "$PROJECT_MCP"; do
+for layer in "$PLATFORM_MCP" "$USER_MCP" "$PROJECT_MCP" "$LOCAL_MCP"; do
   [ -f "$layer" ] || continue
   jq -e . "$layer" >/dev/null 2>&1 && continue
   warn "невалидный JSON: $layer — MCP не раздаю, пока не починишь"
@@ -146,7 +197,11 @@ read_layer() { [ -f "$1" ] && cat "$1" || echo "$EMPTY"; }
 # отвечает «EROFS: read-only file system», и понять, при чём тут секреты,
 # невозможно. Поэтому файл заводим сами и симлинк на этом месте чиним.
 SECRETS_EXAMPLE="$REPO_ROOT/.agents/mcp.secrets.env.example"
-if [ -L "$SECRETS_FILE" ]; then
+# В режиме плана не создаём ничего: `adc mcp list` — это «посмотреть», и
+# заводить от него файлы в репозитории человек не просил.
+if [ "$MODE" = plan ]; then
+  :
+elif [ -L "$SECRETS_FILE" ]; then
   warn "$SECRETS_FILE — симлинк (почти наверняка на образец в read-only слое платформы)"
   warn "  так его не отредактировать; заменяю настоящим файлом, содержимое сохраняю"
   tmp="$SECRETS_FILE.real.$$"
@@ -211,16 +266,27 @@ parse_secrets_file() {
   echo "$json"
 }
 
+# Два файла секретов, той же цепочкой, что слои серверов: пользовательский
+# (один на машину) снизу, проектный сверху — он ближе к задаче, поэтому и
+# главнее. Токен, нужный во всех проектах, достаточно задать в машинном.
 VARS="$(jq -n \
+  --argjson user_secrets "$(parse_secrets_file "$USER_SECRETS")" \
   --argjson secrets "$(parse_secrets_file "$SECRETS_FILE")" \
   --arg repo_root "$REPO_ROOT" \
-  '$ENV + $secrets + {REPO_ROOT: $repo_root}')"
+  '$ENV + $user_secrets + $secrets + {REPO_ROOT: $repo_root}')"
 
 # ── 3. Слить слои, раскрыть подстановки ──────────────────────
 # x-requires пока НЕ вырезаем: гейт ниже смотрит на него уже раскрытым.
+LAYER_PLAT="$(read_layer "$PLATFORM_MCP")"
+LAYER_USER="$(read_layer "$USER_MCP")"
+LAYER_PROJ="$(read_layer "$PROJECT_MCP")"
+LAYER_LOCAL="$(read_layer "$LOCAL_MCP")"
+
 MERGED_RAW="$(jq -n \
-  --argjson plat "$(read_layer "$PLATFORM_MCP")" \
-  --argjson proj "$(read_layer "$PROJECT_MCP")" \
+  --argjson plat "$LAYER_PLAT" \
+  --argjson user "$LAYER_USER" \
+  --argjson proj "$LAYER_PROJ" \
+  --argjson local "$LAYER_LOCAL" \
   --argjson vars "$VARS" '
   def strip_meta: with_entries(select(.key | startswith("//") | not));
   def expand($v): walk(
@@ -229,27 +295,56 @@ MERGED_RAW="$(jq -n \
       gsub("\\$\\{(?<k>[A-Za-z_][A-Za-z0-9_]*)\\}"; ($v[.k] // ("${" + .k + "}")))
     else . end);
 
-  (($plat.mcpServers // {}) * ($proj.mcpServers // {}))
-  | with_entries(select(.value != null))          # null у проекта = выключить
+  (($plat.mcpServers // {})
+   * ($user.mcpServers // {})
+   * ($proj.mcpServers // {})
+   * ($local.mcpServers // {}))
+  | with_entries(select(.value != null))          # null сверху = выключить нижний
   | with_entries(.value |= strip_meta)             # вырезать //-комментарии
   | expand($vars)
 ')"
 
+# Провенанс: в каком слое сервер объявлен и какие слои он перекрывает. Нужен
+# не раздаче, а `adc mcp list` — без него вывод показывает ЧТО роздано, но не
+# отвечает на вопрос «а почему у меня тут это и где мне это править».
+ORIGINS="$(jq -n \
+  --argjson plat "$LAYER_PLAT" \
+  --argjson user "$LAYER_USER" \
+  --argjson proj "$LAYER_PROJ" \
+  --argjson local "$LAYER_LOCAL" '
+  def names: (.mcpServers // {}) | keys;
+  # снизу вверх; последний, где имя встретилось, и есть слой-владелец
+  [ ($plat  | names | map({name: ., scope: "global"})),
+    ($user  | names | map({name: ., scope: "user"})),
+    ($proj  | names | map({name: ., scope: "project"})),
+    ($local | names | map({name: ., scope: "local"})) ]
+  | flatten
+  | group_by(.name)
+  | map({ key: .[0].name,
+          value: { scope: (last | .scope), shadows: (map(.scope) | .[0:-1]) } })
+  | from_entries
+')"
+
 # ── 4. Гейт по x-requires ────────────────────────────────────
+# Причины отсева копим не только в лог, но и в JSON: их печатает `adc mcp list`
+# ("○ figma — нет FIGMA_MCP_ENABLED"), а `adc mcp enable` по полю need_env
+# знает, что именно спросить у человека. Один источник правды: список из
+# list'а не может разойтись с тем, что раздача реально сделала.
 KEEP=""
+REASONS='{}'
 for name in $(echo "$MERGED_RAW" | jq -r 'keys[]'); do
-  ok=1 why=""
+  ok=1 why="" need_env="" need_path=""
   while IFS= read -r req; do
     [ -n "$req" ] || continue
     case "$req" in
       env:*)
         var="${req#env:}"
         val="$(echo "$VARS" | jq -r --arg k "$var" '.[$k] // ""')"
-        [ -n "$val" ] || { ok=0; why="нет переменной $var"; }
+        [ -n "$val" ] || { ok=0; why="нет переменной $var"; need_env="$var"; }
         ;;
       path:*)
         p="${req#path:}"
-        [ -e "$p" ] || { ok=0; why="нет пути $p"; }
+        [ -e "$p" ] || { ok=0; why="нет пути $p"; need_path="$p"; }
         ;;
       *) warn "  сервер '$name': непонятное x-requires «$req» — игнорирую" ;;
     esac
@@ -259,20 +354,26 @@ for name in $(echo "$MERGED_RAW" | jq -r 'keys[]'); do
   if [ "$ok" = 1 ]; then
     KEEP="$KEEP $name"
   else
+    REASONS="$(jq -n --argjson base "$REASONS" --arg n "$name" --arg w "$why" \
+      --arg e "$need_env" --arg p "$need_path" \
+      '$base + {($n): {reason: $w, need_env: (if $e == "" then null else $e end),
+                       need_path: (if $p == "" then null else $p end)}}')"
     dim "  ~ $name не раздаю: $why"
-    # Сказать «нет переменной» мало: человек в этот момент как раз и хочет
-    # знать, ГДЕ она задаётся. Печатаем один раз на прогон, чтобы список
-    # отсечённых серверов не превращался в простыню.
-    case "$why" in
-      "нет переменной"*)
-        if [ -z "${SECRETS_HINT_SHOWN:-}" ]; then
-          SECRETS_HINT_SHOWN=1
-          dim "     переменные — в .agents/mcp.secrets.env (KEY=VALUE), образец рядом: mcp.secrets.env.example"
-        fi ;;
-    esac
   fi
 done
 KEEP="${KEEP# }"
+
+# Сервер, выключенный через `null` в вышележащем слое, до гейта не доходит
+# вовсе — его отфильтровал мердж. Для list'а это всё равно надо показать:
+# «его нет» и «его выключили вот здесь» — разные ответы.
+DISABLED="$(jq -n \
+  --argjson plat "$LAYER_PLAT" --argjson user "$LAYER_USER" \
+  --argjson proj "$LAYER_PROJ" --argjson local "$LAYER_LOCAL" '
+  def offs($s): (.mcpServers // {}) | to_entries
+                | map(select(.value == null) | {key: .key, value: $s}) ;
+  ($plat | offs("global")) + ($user | offs("user"))
+  + ($proj | offs("project")) + ($local | offs("local"))
+  | from_entries')"
 
 # Имена OAuth-серверов забираем ДО вырезания метки: ниже по ним решается,
 # добавлять ли сервер в Codex.
@@ -294,6 +395,48 @@ COUNT="$(echo "$MERGED" | jq -r 'length')"
 # может быть и рабочим), но говорим: иначе агент получит буквальное "${TOKEN}".
 UNRESOLVED="$(echo "$MERGED" | jq -r '[paths(type=="string") as $p | getpath($p) | select(test("\\$\\{"))] | unique | join(", ")')"
 [ -n "$UNRESOLVED" ] && warn "нераскрытые подстановки: $UNRESOLVED (добавь значение в $SECRETS_FILE или отсеки сервер через x-requires)"
+
+# ── 4a. Режим плана: отдать посчитанное и выйти, ничего не записав ──
+# Секретов в выводе нет: серверы отдаём «как объявлены в слое», ДО подстановки
+# значений. Иначе `adc mcp list` показывал бы токен на экране, а его вывод
+# уходит в чужие пасты и в логи. Кто активен и почему — считается по уже
+# раскрытым значениям, так что правда не теряется.
+if [ "$MODE" = plan ]; then
+  jq -n \
+    --arg repo "$REPO_ROOT" \
+    --arg f_global "$PLATFORM_MCP" --arg f_user "$USER_MCP" \
+    --arg f_project "$PROJECT_MCP" --arg f_local "$LOCAL_MCP" \
+    --arg s_user "$USER_SECRETS" --arg s_project "$SECRETS_FILE" \
+    --argjson plat "$LAYER_PLAT" --argjson user "$LAYER_USER" \
+    --argjson proj "$LAYER_PROJ" --argjson local "$LAYER_LOCAL" \
+    --argjson origins "$ORIGINS" --argjson reasons "$REASONS" \
+    --argjson disabled "$DISABLED" \
+    --argjson active "$(printf '%s\n' $NAMES | jq -R . | jq -sc 'map(select(. != ""))')" \
+    --argjson oauth "$(printf '%s\n' $OAUTH_NAMES | jq -R . | jq -sc 'map(select(. != ""))')" \
+    --argjson e_global "$([ -f "$PLATFORM_MCP" ] && echo true || echo false)" \
+    --argjson e_user "$([ -f "$USER_MCP" ] && echo true || echo false)" \
+    --argjson e_project "$([ -f "$PROJECT_MCP" ] && echo true || echo false)" \
+    --argjson e_local "$([ -f "$LOCAL_MCP" ] && echo true || echo false)" '
+    def raw($layer): ($layer.mcpServers // {}) | with_entries(select(.value != null))
+                     | with_entries(.value |= with_entries(select(.key | startswith("//") | not)));
+    # defs — слитое определение КАЖДОГО сервера до подстановки значений.
+    # Именно его показывает list: слой-владелец может нести лишь кусок
+    # переопределения (один env поверх платформенных command/args), и рисовать
+    # по нему командную строку значило бы показывать пустую строку вместо
+    # реальной. Подстановки здесь не раскрыты — токенов на экране нет.
+    (raw($plat) * raw($user) * raw($proj) * raw($local)) as $defs
+    | { repo_root: $repo, defs: $defs,
+      layers: [
+        {scope: "global",  file: $f_global,  exists: $e_global,  servers: raw($plat)},
+        {scope: "user",    file: $f_user,    exists: $e_user,    servers: raw($user)},
+        {scope: "project", file: $f_project, exists: $e_project, servers: raw($proj)},
+        {scope: "local",   file: $f_local,   exists: $e_local,   servers: raw($local)}
+      ],
+      secrets: {user: $s_user, project: $s_project},
+      origins: $origins, reasons: $reasons, disabled: $disabled,
+      active: $active, oauth: $oauth }'
+  exit 0
+fi
 
 # ── 5. Что чистить: разложенное в прошлый раз минус нужное сейчас ──
 PREV=""
@@ -642,21 +785,31 @@ GITIGNORE="$REPO_ROOT/.gitignore"
 if [ -f "$GITIGNORE" ] && ! grep -qF "/.mcp.json" "$GITIGNORE"; then
   cat >> "$GITIGNORE" <<'IGN'
 
-# MCP-серверы агентов — раздаются платформой (tooling/wire-mcp.sh) из двух
-# слоёв, зависят от версии платформы. Проектные отличия — в .agents/mcp.json.
+# MCP-серверы агентов — раздаются платформой (tooling/wire-mcp.sh) из четырёх
+# слоёв, зависят от версии платформы. Серверы команды — в .agents/mcp.json,
+# он как раз В ГИТЕ. Локальный слой (.agents/mcp.local.json) — только мой.
 # В .mcp.json попадают РАСКРЫТЫЕ секреты — в гит его нельзя тем более.
 /.mcp.json
 /.agents/mcp.secrets.env
+/.agents/mcp.local.json
 # Выхлоп браузерного MCP: скриншоты, трейсы, скачанные файлы.
 .playwright-mcp/
 IGN
-  log ".gitignore: добавил /.mcp.json, секреты и .playwright-mcp/ (разовая правка)"
+  log ".gitignore: добавил /.mcp.json, секреты, локальный слой и .playwright-mcp/ (разовая правка)"
 fi
 
 # Страховка на случай, если .gitignore правился до появления секретов.
 if [ -f "$GITIGNORE" ] && ! grep -qF "mcp.secrets.env" "$GITIGNORE"; then
   printf '\n# Секреты MCP-серверов проекта (токены). Только локально.\n/.agents/mcp.secrets.env\n' >> "$GITIGNORE"
   log ".gitignore: добавил /.agents/mcp.secrets.env"
+fi
+
+# То же для локального слоя: он появился позже .mcp.json, и в проектах,
+# заведённых раньше, блок выше уже дописан — новая строка туда не попала бы,
+# а личный сервер уехал бы в гит команды.
+if [ -f "$GITIGNORE" ] && ! grep -qF "mcp.local.json" "$GITIGNORE"; then
+  printf '\n# Локальный слой MCP: мои серверы только в этом проекте.\n/.agents/mcp.local.json\n' >> "$GITIGNORE"
+  log ".gitignore: добавил /.agents/mcp.local.json"
 fi
 
 [ -f "$SECRETS_FILE" ] && chmod 600 "$SECRETS_FILE" 2>/dev/null || true

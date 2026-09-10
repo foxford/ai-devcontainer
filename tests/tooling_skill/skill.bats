@@ -222,6 +222,40 @@ run_skill() {
   assert_output "1"
 }
 
+@test "sync: усыновлённый репозиторий получает игноры рабочих артефактов" {
+  # У adopt'нутого репо .gitignore свой и про платформу не знает. Без этого
+  # блока первый же git status показывает собранное дерево скиллов, стор pnpm
+  # и выхлоп graphify как новые файлы — и часть уезжает в коммит.
+  make_platform_skill "demo"
+  printf 'node_modules\ndist\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+
+  run cat "$REPO_DIR/.gitignore"
+  assert_output --partial ".claude/skills/"
+  assert_output --partial ".pnpm-store/"
+  assert_output --partial "graphify-out/"
+  assert_output --partial "/strix_runs/"
+}
+
+@test "sync: .claude целиком не игнорируется — settings.json проекта не наш" {
+  make_platform_skill "demo"
+  printf 'node_modules\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+  run bash -c "grep -qxF '.claude' '$REPO_DIR/.gitignore'"
+  assert_failure
+}
+
+@test "sync: уже перечисленный артефакт не дублируется" {
+  make_platform_skill "demo"
+  printf 'node_modules\n.pnpm-store/\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+  run bash -c "grep -c '^\.pnpm-store/$' '$REPO_DIR/.gitignore'"
+  assert_output "1"
+}
+
 # ── диспетчер ─────────────────────────────────────────────────
 
 @test "неизвестная команда — ошибка" {

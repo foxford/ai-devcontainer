@@ -166,3 +166,35 @@ EOF
   assert_success
   assert_output --partial "adc new"
 }
+
+# ── граница хост / контейнер ─────────────────────────────────
+# Граница жёсткая намеренно: снаружи контейнера ~/.codex, ~/.hermes и ~/.dsh
+# принадлежат самому разработчику и общие на все его проекты. Команда, которая
+# «почти работает», подмешала бы туда серверы одного проекта молча.
+
+@test "mcp: на хосте (клон платформы писабелен) команда отказывается" {
+  run env AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" bash "$BIN" mcp list
+  assert_failure
+  assert_output --partial "только внутри devcontainer"
+}
+
+@test "mcp: подсказка называет способ попасть внутрь, а не только запрет" {
+  run env AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" bash "$BIN" mcp list
+  assert_output --partial "Reopen in Container"
+}
+
+@test "sync на хосте не запускает раздачу MCP" {
+  # Проверяем не текст, а факт: подсовываем wire-mcp.sh, который оставляет
+  # след. На хосте следа быть не должно — иначе серверы проекта уехали бы в
+  # личные ~/.codex и ~/.hermes разработчика, общие на все его проекты.
+  mkdir -p "$PLATFORM_FIXTURE/tooling"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$PLATFORM_FIXTURE/tooling/skill.sh"
+  printf '#!/usr/bin/env bash\ntouch "$MCP_RAN_MARKER"\n' > "$PLATFORM_FIXTURE/tooling/wire-mcp.sh"
+  local marker="$REPO_DIR/.mcp-ran"
+
+  run env AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" MCP_RAN_MARKER="$marker" \
+      bash -c "cd '$REPO_DIR' && bash '$BIN' sync"
+  assert_success
+  assert_output --partial "MCP пропускаю"
+  [ ! -e "$marker" ]
+}

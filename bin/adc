@@ -1,11 +1,28 @@
 #!/usr/bin/env bash
 # adc — CLI платформы. Ставится install.sh в ~/.local/bin.
 #
-# Команды:
+# Один и тот же CLI живёт на хосте и в контейнере, но команды у них РАЗНЫЕ, и
+# граница жёсткая: команда, попавшая не на ту сторону, не «деградирует», а
+# отказывается с объяснением. Иначе `adc mcp sync`, набранный на хосте,
+# молча писал бы серверы проекта в ЛИЧНЫЕ ~/.codex и ~/.hermes разработчика.
+#
+# ТОЛЬКО НА ХОСТЕ — трогают образ, демон docker и клон платформы
+# (в контейнере клон примонтирован read-only, а docker чужой):
 #   adc new <name> [dir] [--type <t>]
 #                                      — новый проект из skeleton; без --type
 #                                        спросит тип, если их несколько
 #   adc ensure-image      — собрать dev-base:local, если нет/устарел
+#   adc prepare           — хостовая подготовка проекта; её зовёт
+#                                        initializeCommand, руками не нужна
+#
+# ТОЛЬКО В КОНТЕЙНЕРЕ — пишут в конфиги агентов и в общий том /opt/ai-tools,
+# а на хосте те же пути принадлежат самому разработчику, не проекту:
+#   adc mcp <cmd>         — MCP-серверы проекта: list / add / rm /
+#                                        enable / disable / sync
+#   adc hermes <cmd>      — общий на все проекты логин Hermes:
+#                                        status / link / save / unlink
+#
+# И ТАМ, И ТАМ — читают репозиторий и раскладывают файлы внутри него:
 #   adc update            — на хосте: git pull платформы + пересборка
 #                                        образа; в контейнере: то же, что sync
 #   adc sync [--adopt] [--type <t>]
@@ -18,16 +35,10 @@
 #                                        проекта — ещё и его devcontainer.json
 #   adc skill <cmd>       — скиллы проекта: list / status / fork /
 #                                        unfork / migrate / sync
-#   adc mcp <list|sync>   — MCP-серверы проекта: показать / пересобрать
-#   adc hermes <cmd>      — общий на все проекты логин Hermes:
-#                                        status / link / save / unlink
 #   adc plans [--all]     — задачи проекта: что в работе, что залежалось
-#   adc prepare           — хостовая подготовка проекта; её зовёт
-#                                        initializeCommand, руками не нужна
 #
 # Платформа живёт в $AI_DEVCONTAINER_HOME (default ~/.local/share/ai-devcontainer).
-# Команда есть и на хосте, и внутри контейнера (там — симлинк на
-# /opt/ai-devcontainer/bin). new/ensure-image/prepare — только с хоста.
+# В контейнере команда — симлинк на /opt/ai-devcontainer/bin.
 
 set -euo pipefail
 
@@ -109,6 +120,21 @@ host_only() {
   [ -w "$PLATFORM_ROOT" ] && return 0
   err "«$1» доступна только на хосте: $PLATFORM_ROOT примонтирован read-only."
   echo "    ${2:-Выполни на хосте, затем в контейнере: adc skill sync}" >&2
+  exit 1
+}
+
+# Симметричный гейт. Нужен не для порядка, а потому что вне контейнера те же
+# пути принадлежат ДРУГОМУ владельцу: ~/.codex, ~/.hermes и ~/.dsh на хосте —
+# личные конфиги разработчика, а не пер-проектные маунты, и общего тома
+# /opt/ai-tools там нет вовсе. Команда, которая «почти работает», записала бы
+# серверы проекта человеку в личный конфиг — молча и во все его проекты разом.
+# Поэтому отказываемся, а не деградируем.
+container_only() {
+  [ -w "$PLATFORM_ROOT" ] || return 0
+  err "«$1» работает только внутри devcontainer'а."
+  echo "    Снаружи ~/.codex, ~/.hermes и ~/.dsh — твои личные конфиги, а не" >&2
+  echo "    проектные, и общего тома /opt/ai-tools нет. Открой проект в" >&2
+  echo "    VS Code (Reopen in Container) и повтори команду там." >&2
   exit 1
 }
 
@@ -599,8 +625,16 @@ cmd_sync() {
 
   # скиллы + платформенные доки + индекс + .gitignore
   AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$root" bash "$PLATFORM_ROOT/tooling/skill.sh" sync
-  # MCP-серверы (свой скрипт: раздаёт сразу в три агента)
-  if [ -f "$PLATFORM_ROOT/tooling/wire-mcp.sh" ]; then
+  # MCP-серверы (свой скрипт: раздаёт сразу в четыре агента).
+  # На хосте пропускаем НАМЕРЕННО: раздача пишет в ~/.codex, ~/.hermes и
+  # ~/.dsh, а снаружи контейнера это личные конфиги разработчика, общие на все
+  # его проекты. `adc sync`, набранный на хосте, иначе подмешивал бы туда
+  # серверы одного проекта — молча и необратимо для остальных.
+  if [ ! -f "$PLATFORM_ROOT/tooling/wire-mcp.sh" ]; then
+    :
+  elif [ -w "$PLATFORM_ROOT" ]; then
+    dim "  MCP пропускаю: раздача идёт в конфиги агентов, а это делается внутри контейнера (adc mcp sync)"
+  else
     REPO_ROOT="$root" bash "$PLATFORM_ROOT/tooling/wire-mcp.sh" || warn "wire-mcp.sh failed (не блокирует)"
   fi
 
@@ -640,34 +674,14 @@ cmd_hermes() {
   bash "$helper" "$@"
 }
 
-# MCP-серверы проекта. Форков, как у скиллов, тут нет: слой проекта — один
-# небольшой файл .agents/mcp.json, правится руками. Поэтому всего две команды.
+# MCP-серверы проекта. Ровно та же развязка, что у скиллов: команды человека —
+# в tooling/mcp.sh, движок раздачи — в wire-mcp.sh. Здесь только прокидываем
+# корни, чтобы helper не гадал, где платформа, а где проект.
 cmd_mcp() {
-  local helper="$PLATFORM_ROOT/tooling/wire-mcp.sh"
-  case "${1:-list}" in
-    sync)
-      [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
-      REPO_ROOT="$PWD" bash "$helper"
-      echo "    Перезапусти агента (claude / codex / hermes / dsh), чтобы он подхватил серверы." ;;
-    list)
-      echo "платформа:  $PLATFORM_ROOT/mcp/servers.json"
-      echo "проект:     $PWD/.agents/mcp.json$([ -f "$PWD/.agents/mcp.json" ] || echo ' (нет — проект ничего не меняет)')"
-      if [ -f "$PWD/.mcp.json" ] && command -v jq >/dev/null 2>&1; then
-        echo "роздано:"
-        # HTTP-серверы описываются не command/args, а адресом. Токен в
-        # query-строке маскируем: .mcp.json лежит с правами 600, а вывод этой
-        # команды уходит в скроллбек терминала и в чужие пасты.
-        jq -r '.mcpServers | to_entries[] | "  \(.key) → " +
-                 (if .value.url
-                  then (.value.url | sub("(?<p>[?&](access_token|token|api_key)=)[^&]+"; "\(.p)***")) + "  [http]"
-                  else .value.command + " " + ((.value.args // []) | join(" ")) end)' "$PWD/.mcp.json"
-        echo "    (что НЕ роздано и почему — покажет adc mcp sync;"
-        echo "     OAuth-серверам вроде figma нужен разовый ручной логин — см. AGENTS.platform.md)"
-      else
-        echo "роздано:    нечего показать (нет .mcp.json — запусти adc mcp sync)"
-      fi ;;
-    *) err "Использование: adc mcp <list|sync>"; exit 1 ;;
-  esac
+  container_only "adc mcp"
+  local helper="$PLATFORM_ROOT/tooling/mcp.sh"
+  [ -f "$helper" ] || { err "нет $helper — обнови платформу (adc update)"; exit 1; }
+  AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" REPO_ROOT="$PWD" bash "$helper" "$@"
 }
 
 # Задачи проекта. Команда появилась вместе с отказом от plans/archive/: раньше
