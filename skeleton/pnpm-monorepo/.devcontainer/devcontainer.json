@@ -60,6 +60,14 @@
     // контейнеры не дерутся за ~/.claude и hermes-конфиги. Каталоги создаёт
     // initializeCommand (на хосте, до маунтов).
     "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/claude,target=/home/node/.claude,type=bind,consistency=cached",
+    // ~/.claude.json — ФАЙЛ рядом с ~/.claude, а не внутри: маунт выше его не
+    // покрывает. В нём, помимо прочего, лежит enabledMcpjsonServers — одобрение
+    // проектных MCP-серверов из .mcp.json. Без этого маунта rebuild сбрасывает
+    // одобрение, и Claude перестаёт показывать серверы проекта: снаружи это
+    // выглядит как «MCP не раздались», хотя раздача прошла.
+    // Файл заводит initializeCommand (adc prepare) — docker на месте
+    // несуществующего источника создал бы КАТАЛОГ, и конфиг сломался бы совсем.
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/claude.json,target=/home/node/.claude.json,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/opencode,target=/home/node/.config/opencode,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/codex,target=/home/node/.codex,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/MyProject/hermes,target=/home/node/.hermes,type=bind,consistency=cached",

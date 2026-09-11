@@ -30,7 +30,8 @@ full_devcontainer_json() {
     "source=${localEnv:HOME}/.local/share/ai-devcontainer,target=/opt/ai-devcontainer,type=bind,readonly",
     "source=platform-playwright-browsers,target=/home/node/.cache/ms-playwright,type=volume",
     "source=platform-claude-versions,target=/home/node/.local/share/claude,type=volume",
-    "source=${localEnv:HOME}/.ai-devcontainer-dev/x/dsh,target=/home/node/.dsh,type=bind"
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/x/dsh,target=/home/node/.dsh,type=bind",
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/x/claude.json,target=/home/node/.claude.json,type=bind"
   ],
   "postCreateCommand": "bash /opt/ai-devcontainer/tooling/post-create-setup.sh"
 }
@@ -215,4 +216,64 @@ EOF
   [ -f "$REPO_DIR/.ai-devcontainer/platform-rev" ]
   [ ! -e "$REPO_DIR/.claude/.platform-rev" ]
   refute_output --partial "первый sync в этом проекте"
+}
+
+# ── ~/.claude.json: файл, а не каталог ───────────────────────
+# В нём лежит enabledMcpjsonServers — одобрение проектных MCP-серверов. Маунт
+# каталога ~/.claude его не покрывает: это файл РЯДОМ. Без персиста каждый
+# rebuild сбрасывает одобрение, и Claude перестаёт показывать серверы из
+# .mcp.json — снаружи это выглядит как «MCP вообще не раздались».
+
+prepare_in() {
+  local home="$1"
+  mkdir -p "$REPO_DIR/.devcontainer"
+  cat > "$REPO_DIR/.devcontainer/devcontainer.json" <<'J'
+{ "initializeCommand": "adc prepare",
+  "mounts": ["source=${localEnv:HOME}/.ai-devcontainer-dev/Prep/claude,target=/home/node/.claude,type=bind"] }
+J
+  run env HOME="$home" AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" \
+      bash -c "cd '$REPO_DIR' && bash '$BIN' prepare"
+}
+
+@test "prepare заводит claude.json ФАЙЛОМ — иначе docker создаст на его месте каталог" {
+  local h; h="$(mktemp -d)"
+  prepare_in "$h"
+  [ -f "$h/.ai-devcontainer-dev/Prep/claude.json" ]
+  [ ! -d "$h/.ai-devcontainer-dev/Prep/claude.json" ]
+  run cat "$h/.ai-devcontainer-dev/Prep/claude.json"
+  assert_output "{}"
+  rm -rf "$h"
+}
+
+@test "prepare не затирает уже накопленный claude.json" {
+  local h; h="$(mktemp -d)"
+  mkdir -p "$h/.ai-devcontainer-dev/Prep"
+  echo '{"projects":{"x":{"enabledMcpjsonServers":["directus"]}}}' > "$h/.ai-devcontainer-dev/Prep/claude.json"
+  prepare_in "$h"
+  run jq -r '.projects.x.enabledMcpjsonServers[0]' "$h/.ai-devcontainer-dev/Prep/claude.json"
+  assert_output "directus"
+  rm -rf "$h"
+}
+
+@test "prepare объясняет каталог на месте claude.json, а не молчит" {
+  local h; h="$(mktemp -d)"
+  mkdir -p "$h/.ai-devcontainer-dev/Prep/claude.json"
+  prepare_in "$h"
+  assert_output --partial "каталог"
+  assert_output --partial "rmdir"
+  rm -rf "$h"
+}
+
+@test "doctor: нет маунта ~/.claude.json — предупреждение с готовой строкой" {
+  # Именно этого маунта не хватает ВСЕМ проектам, заведённым раньше: сам по себе
+  # он не появится, поэтому doctor обязан назвать его и дать готовую строку.
+  mkdir -p "$REPO_DIR/.devcontainer"
+  full_devcontainer_json
+  grep -v "claude.json" "$REPO_DIR/.devcontainer/devcontainer.json" \
+    | sed 's/type=bind",$/type=bind"/' > "$REPO_DIR/.devcontainer/dc.tmp"
+  mv "$REPO_DIR/.devcontainer/dc.tmp" "$REPO_DIR/.devcontainer/devcontainer.json"
+
+  run_doctor
+  assert_output --partial "не увидит MCP-серверы проекта"
+  assert_output --partial "target=/home/node/.claude.json"
 }

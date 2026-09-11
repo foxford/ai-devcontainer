@@ -790,6 +790,15 @@ check_project_devcontainer() {
   # Проектного скоупа у него нет вовсе — без пер-проектного маунта ~/.dsh
   # окажется контейнер-локальным и на каждый rebuild будет ставить профили заново,
   # а раздача MCP из платформы будет уходить в никуда.
+  # ~/.claude.json — файл РЯДОМ с ~/.claude, маунтом каталога не покрыт. В нём
+  # лежит enabledMcpjsonServers: одобрение проектных MCP-серверов. Без маунта
+  # каждый rebuild сбрасывает его, и Claude перестаёт показывать серверы из
+  # .mcp.json — выглядит как «MCP не раздались», хотя раздача прошла.
+  if ! has "target=/home/node/.claude.json"; then
+    miss=1; warn "  нет маунта под ~/.claude.json → после rebuild Claude не увидит MCP-серверы проекта"
+    echo '      "source=${localEnv:HOME}/.ai-devcontainer-dev/<проект>/claude.json,target=/home/node/.claude.json,type=bind,consistency=cached"' >&2
+    echo "      Файл заведёт adc prepare; без него docker создаст на его месте каталог." >&2
+  fi
   if ! has "target=/home/node/.dsh"; then
     miss=1; warn "  нет маунта под ~/.dsh → профили, сессии и MCP DeepSeek Harness не переживут rebuild"
     echo '      "source=${localEnv:HOME}/.ai-devcontainer-dev/<проект>/dsh,target=/home/node/.dsh,type=bind,consistency=cached"' >&2
@@ -896,6 +905,24 @@ cmd_prepare() {
   for d in claude opencode codex hermes dsh uv history obsidian; do
     mkdir -p "$persist/$d"
   done
+
+  # ~/.claude.json — ФАЙЛ, а не каталог, и лежит он РЯДОМ с ~/.claude, а не
+  # внутри. Маунт каталога его поэтому не покрывает, и до сих пор он оставался
+  # контейнер-локальным: каждый rebuild сбрасывал в том числе
+  # enabledMcpjsonServers — одобрение проектных MCP-серверов из .mcp.json.
+  # Со стороны это выглядит как «Claude не видит MCP вообще»: файл на месте,
+  # раздача прошла, а в списке серверов пусто, потому что они не одобрены.
+  #
+  # Файл обязан существовать ДО старта контейнера: docker, не найдя источник
+  # bind-маунта, создаёт на его месте КАТАЛОГ — и тогда Claude Code не может
+  # прочитать свой конфиг вовсе. Пустой объект, а не пустой файл: JSON должен
+  # быть валидным с первого чтения.
+  if [ ! -e "$persist/claude.json" ]; then
+    printf '{}\n' > "$persist/claude.json"
+  elif [ -d "$persist/claude.json" ]; then
+    warn "$persist/claude.json — каталог (его создал docker при отсутствующем файле)."
+    echo "    Убери его и повтори: rmdir '$persist/claude.json'" >&2
+  fi
 
   # 2. Реестр проектов. Списка своих проектов у платформы нет и взяться ему
   #    больше неоткуда: prepare — единственное место, которое гарантированно
