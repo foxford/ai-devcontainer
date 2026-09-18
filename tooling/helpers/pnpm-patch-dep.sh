@@ -23,8 +23,19 @@ usage() {
   echo -e "  ${DIM}pnpm-patch-dep picomatch 4.0.4${RESET}    # exact version"
   echo -e "  ${DIM}pnpm-patch-dep picomatch 4${RESET}        # latest 4.x from registry"
   echo -e "  ${DIM}pnpm-patch-dep braces 3.0.3${RESET}"
+  echo ""
+  echo -e "  ${CYAN}pnpm-patch-dep doctor${RESET}         # ревизия постоянных override'ов:"
+  echo -e "  ${DIM}                              какие уже можно снять, кто держит остальные,${RESET}"
+  echo -e "  ${DIM}                              вышла ли у держателя версия без ограничения.${RESET}"
+  echo -e "  ${DIM}                              Код возврата 1, если есть что сделать.${RESET}"
   exit 1
 }
+
+DOCTOR=0
+if [[ "${1:-}" == "doctor" ]]; then
+  [[ $# -eq 1 ]] || usage
+  DOCTOR=1
+fi
 
 [[ $# -lt 1 || $# -gt 2 ]] && usage
 
@@ -35,14 +46,26 @@ VER="${2:-}"
 # store (node_modules/.pnpm) + workspace manifests. Does NOT parse `pnpm why`
 # output, whose JSON shape changes between pnpm majors — works the same on v7..v11.
 ANALYZER="$(mktemp 2>/dev/null || echo "/tmp/pnpm-patch-dep-analyzer.$$.cjs")"
-trap 'rm -f "$ANALYZER"' EXIT
+NPM_ERR="$(mktemp 2>/dev/null || echo "/tmp/pnpm-patch-dep-npm.$$.log")"
+trap 'rm -f "$ANALYZER" "$NPM_ERR"' EXIT
 cat > "$ANALYZER" <<'PATCH_DEP_ANALYZER_EOF'
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
-const PKG = process.argv[2];
-const TVER = process.argv[3];
+// Один модуль на всю чистую логику скрипта. Режимы, кроме --report, обслуживают
+// `doctor`: он живёт в bash, а сравнение версий с диапазоном спрашивает здесь —
+// вторая реализация семвера в репозитории разъехалась бы с первой в первый же
+// месяц, и тогда «можно снять» и «ещё нужен» начали бы расходиться молча.
+//   --report     PKG VER    (по умолчанию) человекочитаемый разбор капперов
+//   --json       PKG VER    те же капперы машинно
+//   --satisfies  VER RANGE  только код возврата
+//   --dep-range  PKG        манифест со stdin → "<версия>\t<диапазон|->"
+//   --overrides  FILE…      объявленные override'ы → "<файл>\t<ключ>\t<версия>"
+const argv = process.argv.slice(2);
+const MODE = (argv[0] || '').startsWith('--') ? argv.shift() : '--report';
+const PKG = argv[0];
+const TVER = argv[1];
 const C='\x1b[0;36m', G='\x1b[0;32m', Y='\x1b[1;33m', D='\x1b[2m', R='\x1b[0m';
 
 /* mini semver (^ ~ >= <= > < = ranges, || / space sets) */
@@ -64,6 +87,59 @@ function comparatorOk(ver, c){
 }
 const satisfies = (ver,range) => !range ? null :
   range.split('||').some(or => or.trim().split(/\s+/).every(c => comparatorOk(ver,c)));
+
+if (MODE === '--satisfies') process.exit(satisfies(PKG, TVER) === true ? 0 : 1);
+
+if (MODE === '--dep-range') {
+  let raw = ''; try { raw = fs.readFileSync(0, 'utf8'); } catch {}
+  let m; try { m = JSON.parse(raw); } catch { process.exit(1); }
+  if (Array.isArray(m)) m = m[m.length - 1];
+  if (!m || typeof m !== 'object') process.exit(1);
+  const f = ['dependencies','peerDependencies','optionalDependencies']
+    .find(k => m[k] && m[k][PKG]);
+  console.log(`${m.version || '?'}\t${f ? m[f][PKG] : '-'}`);
+  process.exit(0);
+}
+
+if (MODE === '--overrides') {
+  const unq = s => s.trim().replace(/^['"]|['"]$/g, '');
+  for (const file of argv) {
+    let text; try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    if (file.endsWith('.json')) {
+      let ov; try { ov = (JSON.parse(text).pnpm || {}).overrides; } catch { continue; }
+      for (const [k, v] of Object.entries(ov || {}))
+        if (typeof v === 'string') console.log(`${file}\t${k}\t${v}`);
+      continue;
+    }
+    // YAML: блок `overrides:` первого уровня, построчно. Структура блока
+    // плоская, а парсер тянуть некуда — зависимостей у скрипта нет.
+    let inBlock = false;
+    for (const line of text.split('\n')) {
+      if (/^overrides:\s*$/.test(line)) { inBlock = true; continue; }
+      if (!inBlock) continue;
+      if (/^\S/.test(line)) break;                      // пошёл следующий ключ
+      if (!line.trim() || line.trim().startsWith('#')) continue;
+      const m = line.trim().match(/^(.+?):\s*(.+)$/);
+      if (m) console.log(`${file}\t${unq(m[1])}\t${unq(m[2])}`);
+    }
+  }
+  process.exit(0);
+}
+
+// Пакет на СОСЕДНЕМ мажоре к делу не относится: у pnpm он получает свою копию,
+// а override переписывает только окно `>=MAJOR.0.0 <TVER`. Без этого отсева
+// в «кто держит nanoid ниже 5.1.16» попадал postcss со своим nanoid@^3 — шум,
+// из-за которого снимать override страшно, хотя причина давно ушла.
+const majorsOf = (range) => String(range).split('||').flatMap(o => o.trim().split(/\s+/))
+  .map(c => c.replace(/^(>=|<=|>|<|=|\^|~)\s*/, '').trim())
+  .filter(c => /^\d/.test(c))
+  .map(c => parseInt(c.split('.')[0], 10))
+  .filter(n => Number.isFinite(n));
+const touchesMajor = (range, major) => {
+  const m = majorsOf(range);
+  if (!m.length) return true;                    // `*`, `x`, workspace: — судить не беремся
+  return major >= Math.min(...m) && major <= Math.max(...m);
+};
 
 // Installed 3rd-party deps constrain only via dependencies/peer/optional.
 // (devDependencies of a dependency are metadata pnpm never installs.)
@@ -88,6 +164,7 @@ for (const dir of entries) {
   const r = rangeOf(pj);
   if (!r) continue;
   if (satisfies(TVER, r.range) === true) continue;   // allows target — not a capper
+  if (!touchesMajor(r.range, parse(TVER)[0])) continue;  // другой мажор — не наше окно
   if (!cappers.has(name)) cappers.set(name, { ranges:new Set(), fields:new Set() });
   cappers.get(name).ranges.add(r.range);
   cappers.get(name).fields.add(r.field);
@@ -110,6 +187,13 @@ const declarers = name => manifests
   .filter(mf => ['dependencies','devDependencies','optionalDependencies','peerDependencies']
     .some(f => mf.pj[f] && mf.pj[f][name]))
   .map(mf => mf.pj.name || mf.p);
+
+if (MODE === '--json') {
+  console.log(JSON.stringify({ cappers: [...cappers].map(([name, info]) => ({
+    name, ranges: [...info.ranges], fields: [...info.fields], declarers: declarers(name),
+  })) }));
+  process.exit(0);
+}
 
 if (cappers.size === 0) process.exit(0);
 const out = [];
@@ -138,6 +222,146 @@ analyze() {
   node "$ANALYZER" "$PKG" "$VER" 2>/dev/null
   set -e
 }
+
+# ─── Куда класть override ────────────────────────────────────────────────────
+# pnpm 11 перестал читать поле `pnpm` в package.json — настройки переехали в
+# pnpm-workspace.yaml. Записанный «как раньше» override там молча игнорируется:
+# install проходит успешно, lock не меняется, и скрипт рапортует «not found in
+# lock file even with permanent override» — диагноз, уводящий в дерево
+# зависимостей, хотя дело в адресе файла. Поэтому цель выбираем по мажору
+# самого pnpm, а не угадываем.
+detect_override_file() {
+  PNPM_VERSION="$(pnpm --version 2>/dev/null | tr -d '[:space:]' || true)"
+  PNPM_MAJOR="${PNPM_VERSION%%.*}"
+  if [[ "$PNPM_MAJOR" =~ ^[0-9]+$ ]] && [[ "$PNPM_MAJOR" -ge 11 ]]; then
+    OVERRIDE_FILE="pnpm-workspace.yaml"
+  else
+    OVERRIDE_FILE="package.json"
+  fi
+}
+
+# имя пакета из ключа override: `smol-toml@>=1.0.0 <1.8.0` → smol-toml,
+# `@foxford/cli@^1` → @foxford/cli, `lodash` → lodash
+override_pkg_name() {
+  local key="$1" name="${1%@*}"
+  [[ -z "$name" ]] && name="$key"     # ключ вида `@scope/pkg` без диапазона
+  printf '%s' "$name"
+}
+
+# ─── doctor ──────────────────────────────────────────────────────────────────
+# Override ставится «на время», а живёт годами: причина забывается в тот же
+# день, и снять его потом страшно — никто не помнит, что он держал. doctor
+# отвечает ровно на это: что уже можно выкинуть, кто держит остальное и не
+# вышла ли у держателя версия, где ограничение снято.
+doctor() {
+  detect_override_file
+  log "pnpm ${PNPM_VERSION:-unknown} ${DIM}— overrides live in ${OVERRIDE_FILE}${RESET}"
+
+  # Разбор идёт по установленному дереву: без node_modules «капперов не
+  # осталось» означало бы не «можно снять», а «смотреть было не во что».
+  if [[ ! -d node_modules/.pnpm ]]; then
+    err "node_modules/.pnpm not found — run pnpm i first, doctor reads the installed tree"
+    exit 1
+  fi
+
+  local rows
+  rows="$(node "$ANALYZER" --overrides package.json pnpm-workspace.yaml 2>/dev/null || true)"
+  if [[ -z "$rows" ]]; then
+    ok "No overrides declared — nothing to check"
+    exit 0
+  fi
+
+  local total=0 droppable=0 ignored=0 bumpable=0
+  local file key ver pkg cappers_json cappers_tsv
+  while IFS=$'\t' read -r file key ver; do
+    [[ -z "${key:-}" ]] && continue
+    total=$((total + 1))
+    pkg="$(override_pkg_name "$key")"
+
+    echo ""
+    echo -e "  ${YELLOW}${key}${RESET} → ${GREEN}${ver}${RESET}  ${DIM}(${file})${RESET}"
+
+    if [[ "$file" == "package.json" && "$PNPM_MAJOR" =~ ^[0-9]+$ && "$PNPM_MAJOR" -ge 11 ]]; then
+      ignored=$((ignored + 1))
+      warn "    pnpm ${PNPM_VERSION} doesn't read package.json overrides — this one does nothing"
+    fi
+
+    cappers_json="$(node "$ANALYZER" --json "$pkg" "$ver" 2>/dev/null || true)"
+    cappers_tsv="$(printf '%s' "${cappers_json:-}" | node -e '
+      let d = "";
+      process.stdin.on("data", c => d += c).on("end", () => {
+        let j; try { j = JSON.parse(d); } catch { process.exit(0); }
+        for (const c of j.cappers || [])
+          console.log([c.name, c.ranges.join(", "), c.declarers.slice(0, 3).join(", ")].join("\t"));
+      });
+    ' 2>/dev/null || true)"
+
+    if [[ -z "$cappers_tsv" ]]; then
+      droppable=$((droppable + 1))
+      ok "    nothing in the tree requires ${pkg} below ${ver} any more — drop the override"
+      continue
+    fi
+
+    echo -e "    ${DIM}still needed — held by:${RESET}"
+    # Держат ли ВСЕ капперы до сих пор, или у каждого уже есть релиз без
+    # ограничения — это разные новости: во втором случае override снимается
+    # бампом, и ради этого doctor и зовут через полгода.
+    local lift_all=1
+    local name ranges decl manifest latest_line latest_ver latest_range
+    while IFS=$'\t' read -r name ranges decl; do
+      [[ -z "${name:-}" ]] && continue
+      echo -e "      ${YELLOW}${name}${RESET} ${DIM}requires ${pkg} ${ranges}${RESET}${decl:+ ${DIM}(declared in: ${decl})${RESET}}"
+
+      # Держатель мог давно выпустить релиз без ограничения — это и есть
+      # момент, когда override пора снимать, а без реестра его не увидеть.
+      manifest="$(npm view "${name}@latest" --json 2>"$NPM_ERR" </dev/null || true)"
+      if [[ -z "$manifest" ]]; then
+        if grep -q 'E404' "$NPM_ERR" 2>/dev/null; then
+          echo -e "        ${DIM}not on the registry (local or unpublished) — check by hand${RESET}"
+        else
+          echo -e "        ${DIM}registry unavailable — can't tell if a newer ${name} lifts it${RESET}"
+        fi
+        lift_all=0
+        continue
+      fi
+      latest_line="$(printf '%s' "$manifest" | node "$ANALYZER" --dep-range "$pkg" 2>/dev/null || true)"
+      if [[ -z "$latest_line" ]]; then
+        echo -e "        ${DIM}can't read ${name}@latest manifest — check by hand${RESET}"
+        lift_all=0
+        continue
+      fi
+      latest_ver="${latest_line%%$'\t'*}"
+      latest_range="${latest_line#*$'\t'}"
+      if [[ "$latest_range" == "-" ]]; then
+        ok "        ${name}@${latest_ver} dropped ${pkg} entirely — bump ${name}, then drop the override"
+      elif node "$ANALYZER" --satisfies "$ver" "$latest_range"; then
+        ok "        ${name}@${latest_ver} requires \"${latest_range}\" — bump ${name}, then drop the override"
+      else
+        echo -e "        ${DIM}latest ${name}@${latest_ver} still requires \"${latest_range}\"${RESET}"
+        lift_all=0
+      fi
+    done <<< "$cappers_tsv"
+
+    if [[ "$lift_all" -eq 1 ]]; then
+      bumpable=$((bumpable + 1))
+      echo -e "    ${CYAN}↳${RESET} every holder has a release that lifts it — bump them, then drop this override"
+    fi
+  done <<< "$rows"
+
+  echo ""
+  if [[ "$droppable" -eq 0 && "$ignored" -eq 0 && "$bumpable" -eq 0 ]]; then
+    ok "${total} override(s), every one still doing work"
+    exit 0
+  fi
+  [[ "$droppable" -gt 0 ]] && warn "${droppable}/${total} override(s) can be dropped right now"
+  [[ "$bumpable" -gt 0 ]] && warn "${bumpable}/${total} override(s) go away after bumping the holder"
+  [[ "$ignored" -gt 0 ]] && warn "${ignored} override(s) sit in package.json, which this pnpm ignores"
+  exit 1
+}
+
+if [[ "$DOCTOR" -eq 1 ]]; then
+  doctor
+fi
 
 if [[ -z "$VER" ]]; then
   # No version given — resolve latest from registry
@@ -197,20 +421,7 @@ if [[ "$OLD_COUNT" -eq "$ALREADY" ]]; then
   exit 0
 fi
 
-# ─── Куда класть override ────────────────────────────────────────────────────
-# pnpm 11 перестал читать поле `pnpm` в package.json — настройки переехали в
-# pnpm-workspace.yaml. Записанный «как раньше» override там молча игнорируется:
-# install проходит успешно, lock не меняется, и скрипт рапортует «not found in
-# lock file even with permanent override» — диагноз, уводящий в дерево
-# зависимостей, хотя дело в адресе файла. Поэтому цель выбираем по мажору
-# самого pnpm, а не угадываем.
-PNPM_VERSION="$(pnpm --version 2>/dev/null | tr -d '[:space:]' || true)"
-PNPM_MAJOR="${PNPM_VERSION%%.*}"
-if [[ "$PNPM_MAJOR" =~ ^[0-9]+$ ]] && [[ "$PNPM_MAJOR" -ge 11 ]]; then
-  OVERRIDE_FILE="pnpm-workspace.yaml"
-else
-  OVERRIDE_FILE="package.json"
-fi
+detect_override_file
 log "Overrides go to ${YELLOW}${OVERRIDE_FILE}${RESET} ${DIM}(pnpm ${PNPM_VERSION:-unknown})${RESET}"
 
 # Старые overrides в package.json на pnpm 11 — мёртвый груз: человек их видит,

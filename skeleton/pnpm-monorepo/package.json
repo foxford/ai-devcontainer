@@ -17,7 +17,7 @@
     "release": "changeset publish",
     "clean:cache": "nx reset"
   },
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@12.4.2",
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
     "@playwright/test": "catalog:dev",
@@ -38,9 +38,6 @@
       "test",
       "lint:eslint",
       "lint:type-check"
-    ],
-    "overrides": {
-      "esbuild@>=0.0.0 <0.28.2": "0.28.2"
-    }
+    ]
   }
 }
