@@ -171,3 +171,126 @@ EOF
   [ "$(cat package.json)" = "$ORIGINAL" ]
   [ ! -f package.json.bak ]
 }
+
+# ── куда кладётся override: package.json или pnpm-workspace.yaml ─────────────
+# pnpm 11 перестал читать поле `pnpm` в package.json. Мок отражает ровно это:
+# install патчит lock, только если override лежит в <where> — там, где ЭТОТ
+# pnpm умеет его прочитать. Положили не туда → скрипт честно провалится.
+
+# mock_pnpm <версия> <where>   where: workspace | package | sticky
+mock_pnpm() {
+  local version="$1" where="$2"
+  cat > "$MOCK_BIN_DIR/pnpm" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then echo "$version"; exit 0; fi
+echo "\$@" >> "$MOCK_CALLS_DIR/pnpm.log"
+where="$where"
+if [ "\$where" = "sticky" ]; then
+  printf 'lodash@4.17.21:\n  resolution: {}\n' > pnpm-lock.yaml
+  exit 0
+fi
+src="package.json"
+[ "\$where" = "workspace" ] && src="pnpm-workspace.yaml"
+if grep -q '4\.17\.21' "\$src" 2>/dev/null; then
+  printf 'lodash@4.17.21:\n  resolution: {}\n' > pnpm-lock.yaml
+else
+  printf 'lodash@4.17.20:\n  resolution: {}\n' > pnpm-lock.yaml
+fi
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/pnpm"
+}
+
+# проект с lodash@4.17.20 в lock; $1 — содержимое pnpm-workspace.yaml (пусто = файла нет)
+setup_project() {
+  cd "$PROJECT_DIR"
+  echo '{"name": "test-pkg"}' > package.json
+  printf "lodash@4.17.20:\n  resolution: {}\n" > pnpm-lock.yaml
+  [ -n "${1:-}" ] && printf '%s' "$1" > pnpm-workspace.yaml
+  return 0
+}
+
+@test "pnpm 11: override уходит в pnpm-workspace.yaml, package.json не тронут" {
+  setup_project "packages:
+  - 'apps/*'
+"
+  mock_pnpm 11.2.0 workspace
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_success
+  assert_output --partial "pnpm-workspace.yaml"
+  grep -q "lodash@>=4.0.0 <4.17.21" pnpm-workspace.yaml
+  grep -q "packages:" pnpm-workspace.yaml
+  [ "$(cat package.json)" = '{"name": "test-pkg"}' ]
+}
+
+@test "pnpm 10: override остаётся в package.json, pnpm-workspace.yaml не трогаем" {
+  setup_project "packages:
+  - 'apps/*'
+"
+  WS_BEFORE="$(cat pnpm-workspace.yaml)"
+  mock_pnpm 10.25.0 package
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_success
+  node -e "process.exit(require('$PROJECT_DIR/package.json').pnpm.overrides['lodash@>=4.0.0 <4.17.21'] === '4.17.21' ? 0 : 1)"
+  [ "$(cat pnpm-workspace.yaml)" = "$WS_BEFORE" ]
+}
+
+@test "pnpm неизвестной версии (мок молчит) — деградируем в package.json" {
+  setup_project
+  mock_bin pnpm 0 ""
+  run bash "$SCRIPT" lodash 4.17.21
+  # цвет режет подстроку пополам — сверяем по некрашеному хвосту строки
+  assert_output --partial "(pnpm unknown)"
+  assert_output --partial "Adding permanent override to package.json"
+}
+
+@test "pnpm 11: созданный на время pnpm-workspace.yaml удаляется, когда override не нужен" {
+  setup_project
+  mock_pnpm 11.2.0 sticky
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_success
+  assert_output --partial "all 1 entries patched"
+  [ ! -f pnpm-workspace.yaml ]
+}
+
+@test "pnpm 11: чужие записи в overrides не страдают" {
+  setup_project "packages:
+  - 'apps/*'
+
+overrides:
+  'left-pad@1': '1.3.0'
+"
+  WS_BEFORE="$(cat pnpm-workspace.yaml)"
+  mock_pnpm 11.2.0 sticky
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_success
+  [ "$(cat pnpm-workspace.yaml)" = "$WS_BEFORE" ]
+}
+
+@test "pnpm 11: pnpm i падает — pnpm-workspace.yaml восстановлен байт-в-байт" {
+  setup_project "packages:
+  - 'apps/*'
+"
+  WS_BEFORE="$(cat pnpm-workspace.yaml)"
+  cat > "$MOCK_BIN_DIR/pnpm" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "--version" ] && { echo "11.2.0"; exit 0; }
+echo "install failed"
+exit 1
+EOF
+  chmod +x "$MOCK_BIN_DIR/pnpm"
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_failure
+  assert_output --partial "pnpm-workspace.yaml restored from backup"
+  [ "$(cat pnpm-workspace.yaml)" = "$WS_BEFORE" ]
+  [ ! -f pnpm-workspace.yaml.bak ]
+}
+
+@test "pnpm 11: мёртвые pnpm.overrides в package.json — предупреждение" {
+  setup_project
+  echo '{"name":"t","pnpm":{"overrides":{"left-pad":"1.3.0"}}}' > package.json
+  mock_pnpm 11.2.0 sticky
+  run bash "$SCRIPT" lodash 4.17.21
+  assert_success
+  assert_output --partial "this pnpm ignores them"
+}

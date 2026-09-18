@@ -170,9 +170,8 @@ else
   MAJOR="${VER%%.*}"
 fi
 
-PKG_JSON="package.json"
 
-if [[ ! -f "$PKG_JSON" ]]; then
+if [[ ! -f "package.json" ]]; then
   err "package.json not found in $(pwd)"
   exit 1
 fi
@@ -198,57 +197,147 @@ if [[ "$OLD_COUNT" -eq "$ALREADY" ]]; then
   exit 0
 fi
 
-# Backup
-cp "$PKG_JSON" "${PKG_JSON}.bak"
-restore_backup() { mv -f "${PKG_JSON}.bak" "$PKG_JSON" 2>/dev/null; rm -f "$ANALYZER"; }
+# ─── Куда класть override ────────────────────────────────────────────────────
+# pnpm 11 перестал читать поле `pnpm` в package.json — настройки переехали в
+# pnpm-workspace.yaml. Записанный «как раньше» override там молча игнорируется:
+# install проходит успешно, lock не меняется, и скрипт рапортует «not found in
+# lock file even with permanent override» — диагноз, уводящий в дерево
+# зависимостей, хотя дело в адресе файла. Поэтому цель выбираем по мажору
+# самого pnpm, а не угадываем.
+PNPM_VERSION="$(pnpm --version 2>/dev/null | tr -d '[:space:]' || true)"
+PNPM_MAJOR="${PNPM_VERSION%%.*}"
+if [[ "$PNPM_MAJOR" =~ ^[0-9]+$ ]] && [[ "$PNPM_MAJOR" -ge 11 ]]; then
+  OVERRIDE_FILE="pnpm-workspace.yaml"
+else
+  OVERRIDE_FILE="package.json"
+fi
+log "Overrides go to ${YELLOW}${OVERRIDE_FILE}${RESET} ${DIM}(pnpm ${PNPM_VERSION:-unknown})${RESET}"
+
+# Старые overrides в package.json на pnpm 11 — мёртвый груз: человек их видит,
+# а pnpm нет. Предупреждаем, но не трогаем: чужие записи не наши.
+if [[ "$OVERRIDE_FILE" == "pnpm-workspace.yaml" ]] \
+   && node -e "const p=require('./package.json'); process.exit(p.pnpm&&p.pnpm.overrides&&Object.keys(p.pnpm.overrides).length?0:1)" 2>/dev/null; then
+  warn "package.json still has pnpm.overrides — this pnpm ignores them, move them to pnpm-workspace.yaml"
+fi
+
+# Файла может не быть вовсе (не-workspace проект на pnpm 11) — тогда мы его
+# создаём, и «восстановление» означает удалить, а не вернуть содержимое.
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  HAD_OVERRIDE_FILE=1
+  RESTORE_NOTE="${OVERRIDE_FILE} restored from backup"
+  cp "$OVERRIDE_FILE" "${OVERRIDE_FILE}.bak"
+else
+  HAD_OVERRIDE_FILE=0
+  RESTORE_NOTE="${OVERRIDE_FILE} removed"
+fi
+
+restore_backup() {
+  if [[ "$HAD_OVERRIDE_FILE" -eq 1 ]]; then
+    mv -f "${OVERRIDE_FILE}.bak" "$OVERRIDE_FILE" 2>/dev/null || true
+  else
+    rm -f "$OVERRIDE_FILE"
+  fi
+  rm -f "$ANALYZER"
+}
 # ERR ловит только необработанные сбои (set -e). Явные `if ! CMD; then exit 1;
 # fi` ниже (шаги 2 и 4, чтобы напечатать вывод pnpm перед выходом) trap НЕ
 # триггерят — там restore_backup вызывается вручную, тем же кодом.
-trap 'restore_backup; err "Failed — package.json restored from backup"' ERR
+trap 'restore_backup; err "Failed — ${RESTORE_NOTE}"' ERR
+
+OVERRIDE_KEY="${PKG}@>=${MAJOR}.0.0 <${VER}"
+
+# add|del в обоих форматах. Ключ и версия идут через окружение: в ключе есть
+# пробел, `<` и `>` — интерполировать такое в тело `node -e` значит однажды
+# получить синтаксическую ошибку JS вместо override'а.
+override_edit() {
+  OV_MODE="$1" \
+  OV_FILE="$OVERRIDE_FILE" \
+  OV_KEY="$OVERRIDE_KEY" \
+  OV_VER="$VER" \
+  OV_HAD_FILE="$HAD_OVERRIDE_FILE" \
+  node -e '
+const fs = require("fs");
+const { OV_MODE: mode, OV_FILE: file, OV_KEY: key, OV_VER: ver } = process.env;
+
+if (file === "package.json") {
+  const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (mode === "add") {
+    if (!pkg.pnpm) pkg.pnpm = {};
+    if (!pkg.pnpm.overrides) pkg.pnpm.overrides = {};
+    pkg.pnpm.overrides[key] = ver;
+  } else if (pkg.pnpm && pkg.pnpm.overrides) {
+    delete pkg.pnpm.overrides[key];
+    if (Object.keys(pkg.pnpm.overrides).length === 0) delete pkg.pnpm.overrides;
+    if (Object.keys(pkg.pnpm).length === 0) delete pkg.pnpm;
+  }
+  fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+  process.exit(0);
+}
+
+// pnpm-workspace.yaml правим построчно: зависимостей у скрипта нет, тянуть
+// YAML-парсер некуда. Это безопасно ровно потому, что строку мы порождаем
+// сами и удаляем её же — остальной файл (packages, catalogs) не парсится.
+const entry = "  \x27" + key + "\x27: \x27" + ver + "\x27";
+const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+let lines = text.length ? text.replace(/\n+$/, "").split("\n") : [];
+const isHeader = (l) => /^overrides:\s*(\{\s*\})?\s*$/.test(l);
+
+lines = lines.filter((l) => l.trim() !== entry.trim());
+
+if (mode === "add") {
+  let i = lines.findIndex(isHeader);
+  if (i === -1) {
+    if (lines.length && lines[lines.length - 1].trim() !== "") lines.push("");
+    lines.push("overrides:");
+    i = lines.length - 1;
+  } else {
+    lines[i] = "overrides:";          // разворачиваем `overrides: {}`
+  }
+  lines.splice(i + 1, 0, entry);
+} else {
+  const i = lines.findIndex(isHeader);
+  // заголовок без единого потомка — это `overrides: null`, на котором pnpm
+  // падает; убираем вместе с последней записью
+  if (i !== -1 && !/^\s+\S/.test(lines[i + 1] || "")) lines.splice(i, 1);
+}
+
+const out = lines.join("\n").replace(/\n+$/, "");
+if (!out.trim() && process.env.OV_HAD_FILE !== "1") {
+  if (fs.existsSync(file)) fs.unlinkSync(file);   // файл наш, пустым не оставляем
+} else {
+  fs.writeFileSync(file, out + "\n");
+}
+'
+}
 
 # Step 1: Add override
-OVERRIDE_KEY="${PKG}@>=${MAJOR}.0.0 <${VER}"
 log "Adding override: ${DIM}${OVERRIDE_KEY} → ${VER}${RESET}"
-node -e "
-const fs = require('fs');
-const pkg = JSON.parse(fs.readFileSync('$PKG_JSON', 'utf8'));
-if (!pkg.pnpm) pkg.pnpm = {};
-if (!pkg.pnpm.overrides) pkg.pnpm.overrides = {};
-pkg.pnpm.overrides['$OVERRIDE_KEY'] = '$VER';
-fs.writeFileSync('$PKG_JSON', JSON.stringify(pkg, null, 2) + '\n');
-"
+override_edit add
 
 # Step 2: pnpm i with override
 log "Installing with override..."
 if ! OUTPUT=$(pnpm i --force 2>&1); then
   echo -e "${DIM}${OUTPUT}${RESET}"
   restore_backup
-  err "pnpm install failed — package.json restored from backup"
+  err "pnpm install failed — ${RESTORE_NOTE}"
   exit 1
 fi
 
 # Step 3: Remove override
 log "Removing override..."
-node -e "
-const fs = require('fs');
-const pkg = JSON.parse(fs.readFileSync('$PKG_JSON', 'utf8'));
-delete pkg.pnpm.overrides['$OVERRIDE_KEY'];
-if (Object.keys(pkg.pnpm.overrides).length === 0) delete pkg.pnpm.overrides;
-if (Object.keys(pkg.pnpm).length === 0) delete pkg.pnpm;
-fs.writeFileSync('$PKG_JSON', JSON.stringify(pkg, null, 2) + '\n');
-"
+override_edit del
 
 # Step 4: pnpm i without override
 log "Reinstalling without override..."
 if ! OUTPUT=$(pnpm i 2>&1); then
   echo -e "${DIM}${OUTPUT}${RESET}"
   restore_backup
-  err "pnpm install failed — package.json restored from backup"
+  err "pnpm install failed — ${RESTORE_NOTE}"
   exit 1
 fi
 
 # Cleanup backup
-rm -f "${PKG_JSON}.bak"
+rm -f "${OVERRIDE_FILE}.bak"
 
 # Verify
 NEW_COUNT=$(grep -c "${PKG}@${MAJOR}\." pnpm-lock.yaml || true)
@@ -270,15 +359,8 @@ if [[ "$PATCHED" -eq 0 ]]; then
 else
   warn "${PATCHED}/${NEW_COUNT} patched, ${YELLOW}${REMAINING}${RESET} stuck — adding permanent override"
 fi
-log "Adding permanent override to package.json"
-node -e "
-const fs = require('fs');
-const pkg = JSON.parse(fs.readFileSync('$PKG_JSON', 'utf8'));
-if (!pkg.pnpm) pkg.pnpm = {};
-if (!pkg.pnpm.overrides) pkg.pnpm.overrides = {};
-pkg.pnpm.overrides['$OVERRIDE_KEY'] = '$VER';
-fs.writeFileSync('$PKG_JSON', JSON.stringify(pkg, null, 2) + '\n');
-"
+log "Adding permanent override to ${OVERRIDE_FILE}"
+override_edit add
 
 log "Installing with permanent override..."
 if ! OUTPUT=$(pnpm i 2>&1); then
@@ -294,7 +376,7 @@ if [[ "$FINAL" -eq 0 ]]; then
   exit 1
 fi
 ok "${GREEN}${PKG}@${VER}${RESET} — ${FINAL} entries patched"
-warn "Permanent override added to package.json: ${DIM}${OVERRIDE_KEY} → ${VER}${RESET}"
+warn "Permanent override added to ${OVERRIDE_FILE}: ${DIM}${OVERRIDE_KEY} → ${VER}${RESET}"
 warn "Remove it when upstream updates their dependency"
 
 # Show exactly which dependency must move so the override becomes unnecessary

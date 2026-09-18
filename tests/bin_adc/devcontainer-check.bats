@@ -277,3 +277,28 @@ J
   assert_output --partial "не увидит MCP-серверы проекта"
   assert_output --partial "target=/home/node/.claude.json"
 }
+
+# ── маунт с неабсолютным target ──────────────────────────────
+
+@test "doctor: лишний символ в target маунта ловится до docker run" {
+  # Живой случай: при вставке соседнего маунта в строку opencode заехал
+  # бэктик. docker падает на `docker run` с «invalid mount path ... must be
+  # absolute» — в этой ошибке нет ни слова про devcontainer.json, и стоит она
+  # в конце простыни из сотни аргументов.
+  mkdir -p "$REPO_DIR/.devcontainer"
+  full_devcontainer_json
+  sed 's|target=/home/node/.dsh|target=`/home/node/.dsh|' \
+    "$REPO_DIR/.devcontainer/devcontainer.json" > "$REPO_DIR/.devcontainer/dc.tmp"
+  mv "$REPO_DIR/.devcontainer/dc.tmp" "$REPO_DIR/.devcontainer/devcontainer.json"
+
+  run_doctor
+  assert_output --partial "неабсолютным target"
+  assert_output --partial '`/home/node/.dsh'
+}
+
+@test "doctor: нормальные маунты не объявляются сломанными" {
+  mkdir -p "$REPO_DIR/.devcontainer"
+  full_devcontainer_json
+  run_doctor
+  refute_output --partial "неабсолютным target"
+}

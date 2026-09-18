@@ -32,6 +32,7 @@
     // "source=${localEnv:HOME}/Development/@foxford/<repo>,target=/workspaces/<repo>,type=bind,consistency=cached"
 
     // Персист per-project
+    "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/claude.json,target=/home/node/.claude.json,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/claude,target=/home/node/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/opencode,target=/home/node/.config/opencode,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ai-devcontainer-dev/ai-devcontainer/codex,target=/home/node/.codex,type=bind,consistency=cached",
