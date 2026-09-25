@@ -302,3 +302,54 @@ J
   run_doctor
   refute_output --partial "неабсолютным target"
 }
+
+# ── контракт платформы доезжает до Claude Code ───────────────
+# AGENTS.platform.md тянется `@`-импортом из CLAUDE.md, а импорт в симлинк
+# Claude Code не разворачивает. Болезнь тихая и с нашей стороны зелёная:
+# раздача рапортует «разложено», файл на месте, cat его читает. Снаружи это
+# выглядит как агент, который «почему-то не знает про quality gates», —
+# поэтому диагноз и живёт в doctor.
+
+@test "doctor: AGENTS.platform.md симлинком — говорит, что Claude контракт не увидит" {
+  printf '@AGENTS.platform.md\n@AGENTS.md\n' > "$REPO_DIR/CLAUDE.md"
+  echo "contract" > "$PLATFORM_FIXTURE/contract.md"
+  ln -sfn "$PLATFORM_FIXTURE/contract.md" "$REPO_DIR/AGENTS.platform.md"
+
+  run_doctor
+  assert_output --partial "разложен симлинком"
+  assert_output --partial "adc sync"
+}
+
+@test "doctor: AGENTS.platform.md настоящим файлом — подтверждает, что импорт доедет" {
+  printf '@AGENTS.platform.md\n' > "$REPO_DIR/CLAUDE.md"
+  echo "contract" > "$REPO_DIR/AGENTS.platform.md"
+
+  run_doctor
+  assert_output --partial "на месте файлом"
+  refute_output --partial "разложен симлинком"
+}
+
+@test "doctor: CLAUDE.md импортирует, а дока нет — раздача не проходила" {
+  printf '@AGENTS.platform.md\n' > "$REPO_DIR/CLAUDE.md"
+
+  run_doctor
+  assert_output --partial "а файла нет"
+  assert_output --partial "adc sync"
+}
+
+@test "doctor: нет @-импорта — про контракт молчим, ломаться нечему" {
+  # Остальные три агента идут по markdown-ссылке из AGENTS.md и читают док
+  # своим Read'ом, которому симлинк не мешает.
+  printf '# CLAUDE.md проекта\n' > "$REPO_DIR/CLAUDE.md"
+  echo "contract" > "$PLATFORM_FIXTURE/contract.md"
+  ln -sfn "$PLATFORM_FIXTURE/contract.md" "$REPO_DIR/AGENTS.platform.md"
+
+  run_doctor
+  refute_output --partial "контракт:"
+}
+
+@test "doctor: в самом репозитории платформы контракт не проверяем" {
+  printf '@AGENTS.platform.md\n' > "$PLATFORM_FIXTURE/CLAUDE.md"
+  AI_DEVCONTAINER_HOME="$PLATFORM_FIXTURE" REPO_ROOT="$PLATFORM_FIXTURE" run bash "$BIN" doctor
+  refute_output --partial "контракт:"
+}

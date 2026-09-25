@@ -35,6 +35,7 @@ PLATFORM_ROOT="${AI_DEVCONTAINER_HOME:-/opt/ai-devcontainer}"
 [ -d "$PLATFORM_ROOT/skills" ] || PLATFORM_ROOT="$HOME/.local/share/ai-devcontainer"
 PLATFORM_SKILLS="${AI_DEVCONTAINER_SKILLS:-$PLATFORM_ROOT/skills}"
 
+TOOLING_DIR_FOR_DOCS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_SKILLS="$REPO_ROOT/.agents/skills"
 STATE_DIR="$REPO_ROOT/.ai-devcontainer"
 BASE_DIR="$STATE_DIR/skills-base"
@@ -56,6 +57,16 @@ dim()  { echo -e "${C_DIM}$*${C_RESET}"; }
 [ -d "$PLATFORM_SKILLS" ] || { err "не нахожу платформенные скиллы ($PLATFORM_SKILLS). Внутри контейнера это /opt/ai-devcontainer/skills — примонтирован ли клон платформы?"; exit 1; }
 
 rel_files() { (cd "$1" && find . -type f -printf '%P\n' | sort); }
+
+# Доки платформы раздаёт wire-docs.sh, и у режимов раздачи разные признаки:
+# режим link опознаётся по самому факту симлинка, режим copy — по маркеру в
+# первой строке. Держать этот разбор ещё и здесь значит завести вторую версию
+# правды, которая разойдётся с первой в тот день, когда у дока сменят режим.
+# Поэтому и список доков, и ответ «наше ли это» берём у самого движка —
+# ровно как `mcp list` берёт план у `wire-mcp.sh --dump-plan`.
+WIRE_DOCS="$TOOLING_DIR_FOR_DOCS/wire-docs.sh"
+docs_list()         { [ -f "$WIRE_DOCS" ] && bash "$WIRE_DOCS" --list; }
+docs_is_generated() { [ -f "$WIRE_DOCS" ] && bash "$WIRE_DOCS" --is-generated "$1"; }
 
 # Генерируемое и раздаваемое платформой в гите проекта не нужно. .gitignore —
 # файл проекта, поэтому правки в скелете сюда не доезжают: дописываем сами.
@@ -95,14 +106,19 @@ ensure_gitignore() {
                "/strix_runs/"
   # Доки платформы игнорим только те, что реально раздаются симлинком: если
   # проект забрал док себе (настоящий файл), он трекается и правило было бы ложью.
-  local dst to docs=()
-  for dst in "AGENTS.platform.md" "MONOREPO.md" ".agents/skills/README.md" \
-             "plans/README.md" ".agents/mcp.secrets.env.example"; do
+  local dst to _src _mode docs=()
+  while IFS=: read -r _src dst _mode; do
+    [ -n "${dst:-}" ] || continue
     to="$REPO_ROOT/$dst"
-    [ -e "$to" ] && [ ! -L "$to" ] && continue
+    # Существующий файл, которого раздача не писала, — забран проектом:
+    # он трекается, и правило игноринга было бы ложью. Отсутствующий вносим
+    # заранее: раздача пройдёт позже, а .gitignore правим один раз.
+    if { [ -e "$to" ] || [ -L "$to" ]; } && ! docs_is_generated "$to"; then
+      continue
+    fi
     docs+=("/$dst")
-  done
-  [ "${#docs[@]}" -gt 0 ] && ignore_block "Доки платформы — раздаются симлинками (tooling/wire-docs.sh)" "${docs[@]}"
+  done < <(docs_list)
+  [ "${#docs[@]}" -gt 0 ] && ignore_block "Доки платформы — раздаются симлинком или копией (tooling/wire-docs.sh)" "${docs[@]}"
   return 0
 }
 
@@ -145,17 +161,18 @@ patch_hermes() {
 # Убираем ТОЛЬКО то, что совпадает с платформенным байт в байт; разошедшееся
 # оставляем проекту и говорим, где посмотреть диф.
 migrate_docs() {
-  local docs_src="$PLATFORM_ROOT/docs" pair src dst from to
+  local docs_src="$PLATFORM_ROOT/docs" src dst _mode from to
   [ -d "$docs_src" ] || return 0
-  for pair in "AGENTS.platform.md:AGENTS.platform.md" \
-              "MONOREPO.md:MONOREPO.md" \
-              "skills-README.md:.agents/skills/README.md" \
-              "plans-README.md:plans/README.md" \
-              "mcp-secrets.env.example:.agents/mcp.secrets.env.example"; do
-    src="${pair%%:*}"; dst="${pair#*:}"
+  while IFS=: read -r src dst _mode; do
+    [ -n "${src:-}" ] || continue
     from="$docs_src/$src"; to="$REPO_ROOT/$dst"
     [ -f "$from" ] || continue
-    [ -e "$to" ] && [ ! -L "$to" ] || continue
+    { [ -e "$to" ] || [ -L "$to" ]; } || continue
+    # Наша же раздача — мигрировать нечего. Проверка обязана идти до cmp:
+    # копия режима copy несёт маркер в шапке и с платформенным файлом байт в
+    # байт не совпадёт НИКОГДА, так что без этой строки migrate на каждом
+    # прогоне ругался бы «отличается от платформенного» на здоровый проект.
+    docs_is_generated "$to" && continue
     if cmp -s "$from" "$to"; then
       rm -f "$to"
       log "  $dst — копия платформенной, убрал (дальше едет из платформы)"
@@ -163,7 +180,7 @@ migrate_docs() {
       warn "$dst отличается от платформенного — оставил проекту"
       echo "    посмотреть: diff '$from' '$to'" >&2
     fi
-  done
+  done < <(docs_list)
 
   # Разложить док мало — на него должен кто-то ссылаться, иначе агенты его не
   # прочитают. Ссылаются два файла проекта: CLAUDE.md (через @-импорт, нативно
@@ -330,8 +347,11 @@ cmd_sync() {
   [ -f "$wire" ] || { err "не нахожу $wire"; exit 1; }
   REPO_ROOT="$REPO_ROOT" bash "$wire"
   # Сборка кладёт в проект генерируемое (индекс скиллов) и раздаваемое
-  # (симлинки доков) — им место в .gitignore, иначе они висят в git status, а
+  # (доки платформы) — им место в .gitignore, иначе они висят в git status, а
   # симлинк на абсолютный путь клона платформы однажды окажется закоммичен.
+  # Копия дока опасна тем же и сильнее: она выглядит обычным файлом проекта,
+  # и закоммитить её ничто не остановит — а дальше платформенный контракт
+  # начинает жить в репозитории проекта своей жизнью.
   # Раньше это делала только migrate — и каждый НОВЫЙ раздаваемый док
   # приходилось доигнорировать в проектах руками. Диф в трекаемом .gitignore
   # тут разовый (дописываются лишь недостающие строки), а не на каждый прогон.

@@ -6,14 +6,34 @@
 # жизнью — платформа не могла поправить общее правило нигде, кроме новых
 # проектов. Теперь общее раздаётся отсюда, а проект ДОПОЛНЯЕТ его своим файлом.
 #
-# Раздаётся симлинком на монтируемый клон платформы: проза, править её в проекте
-# нельзя (маунт read-only), правка в платформе видна сразу.
+# РЕЖИМ РАЗДАЧИ у каждого дока свой, и это не вкусовщина:
 #
-# ПЕРЕКРЫТИЕ: если в проекте по этому пути лежит НАСТОЯЩИЙ файл (не наш симлинк) —
-# он выигрывает, мы не трогаем. Так проект может забрать док себе, а мы не
-# затираем то, чего не писали.
+#   link — симлинк на монтируемый клон платформы. Дёшево и правка в платформе
+#          видна сразу, без пересборки. Годится для всего, что агент читает
+#          СВОИМ Read-инструментом, сходив по ссылке из AGENTS.md: симлинк ему
+#          не мешает.
+#
+#   copy — настоящий файл с маркером в шапке. Дороже (обновляется на adc sync,
+#          а не мгновенно), но обязателен для того, что Claude Code тянет
+#          `@`-импортом из CLAUDE.md: импорт в симлинк он не разворачивает, и
+#          док молча не доезжает до контекста. Болезнь тихая — раздача
+#          рапортует «разложено», файл на месте, `cat` его читает; не читает
+#          только тот, ради кого раскладывали. Сейчас такой док один —
+#          AGENTS.platform.md, он же несёт весь контракт платформы.
+#
+# ПЕРЕКРЫТИЕ: если в проекте по этому пути лежит файл, которого раздача не
+# писала, — он выигрывает, мы не трогаем. Так проект может забрать док себе, а
+# мы не затираем то, чего не писали. «Не писала» определяется по-разному:
+# симлинк наш по самому факту симлинка, копия — по маркеру в первой строке.
+# Без маркера копию было бы не отличить от файла проекта, и раздача либо
+# затирала бы чужое, либо навсегда залипала на первой версии.
 #
 # Зовётся из wire-agent-skills.sh, отдельно дёргать не нужно.
+#
+# Флаги для соседних скриптов (тот же приём, что `wire-mcp.sh --dump-plan`):
+#   --list                  печатает таблицу раздачи, src:dst:mode на строку
+#   --is-generated <путь>   exit 0, если по пути лежит НАША раздача
+# Оба отвечают без побочных эффектов и не требуют ни проекта, ни доков.
 
 set -euo pipefail
 
@@ -21,6 +41,40 @@ REPO_ROOT="${REPO_ROOT:-$PWD}"
 TOOLING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_ROOT="$(dirname "$TOOLING_DIR")"
 DOCS_SRC="${AI_DEVCONTAINER_DOCS:-$PLATFORM_ROOT/docs}"
+
+# Маркер в первой строке копии. Отдельная строка-константа, потому что его
+# ищут ещё и tooling/skill.sh (через --is-generated) и тесты.
+GEN_MARK='ai-devcontainer:generated'
+
+# исходник в платформе : путь в проекте : режим раздачи
+DOCS="
+AGENTS.platform.md:AGENTS.platform.md:copy
+MONOREPO.md:MONOREPO.md:link
+skills-README.md:.agents/skills/README.md:link
+plans-README.md:plans/README.md:link
+mcp-secrets.env.example:.agents/mcp.secrets.env.example:link
+"
+
+# Наша ли это раздача по данному пути.
+# Пустой путь, каталог, чужой файл — всё «не наше», и это безопасная сторона:
+# в сомнительном случае мы ничего не перезаписываем.
+is_generated() {
+  local to="${1:-}" first=''
+  [ -n "$to" ] || return 1
+  [ -L "$to" ] && return 0          # симлинк — наша раздача режима link
+  [ -f "$to" ] || return 1
+  IFS= read -r first < "$to" || first=''
+  case "$first" in *"$GEN_MARK"*) return 0;; esac
+  return 1
+}
+
+case "${1:-}" in
+  --list)
+    printf '%s\n' "$DOCS" | sed '/^[[:space:]]*$/d'
+    exit 0;;
+  --is-generated)
+    is_generated "${2:-}" && exit 0 || exit 1;;
+esac
 
 C_GREEN='\033[0;32m'; C_YELLOW='\033[0;33m'; C_DIM='\033[2m'; C_RESET='\033[0m'
 log()  { echo -e "${C_GREEN}==>${C_RESET} $*"; }
@@ -35,32 +89,50 @@ if [ "$(readlink -f "$REPO_ROOT")" = "$(readlink -f "$PLATFORM_ROOT")" ]; then
   exit 0
 fi
 
-# исходник в платформе → путь в проекте
-DOCS="
-AGENTS.platform.md:AGENTS.platform.md
-MONOREPO.md:MONOREPO.md
-skills-README.md:.agents/skills/README.md
-plans-README.md:plans/README.md
-mcp-secrets.env.example:.agents/mcp.secrets.env.example
-"
+# Шапка копии. Без неё файл не отличить от проектного; с ней человек, открывший
+# его в редакторе, сразу видит, что правит не тот файл.
+gen_header() {
+  printf '<!-- %s — копия %s из платформы (tooling/wire-docs.sh).\n' "$GEN_MARK" "$1"
+  printf '     Правь оригинал в платформе: локальные правки затрёт следующий adc sync.\n'
+  printf '     Копией, а не симлинком, — потому что этот док тянется @-импортом\n'
+  printf '     из CLAUDE.md, а импорт в симлинк Claude Code не разворачивает. -->\n\n'
+}
 
-linked=0 kept=0
-while IFS=: read -r src dst; do
+placed=0 kept=0
+while IFS=: read -r src dst mode; do
   [ -n "${src:-}" ] || continue
   from="$DOCS_SRC/$src"
   to="$REPO_ROOT/$dst"
   [ -f "$from" ] || { warn "нет $from — пропускаю"; continue; }
 
-  if [ -e "$to" ] && [ ! -L "$to" ]; then
+  # -e ложно для битого симлинка, поэтому проверяем ещё и -L: битый симлинк
+  # оставила прошлая раздача, и он именно наш — его надо чинить, а не беречь.
+  if { [ -e "$to" ] || [ -L "$to" ]; } && ! is_generated "$to"; then
     kept=$((kept + 1))
     dim "  $dst — файл проекта, не трогаю (платформенный вариант: $from)"
     continue
   fi
+
   mkdir -p "$(dirname "$to")"
-  ln -sfn "$from" "$to"
-  linked=$((linked + 1))
+  if [ "${mode:-link}" = copy ]; then
+    tmp="$to.adc-tmp.$$"
+    { gen_header "$src"; cat "$from"; } > "$tmp"
+    # Не переписываем совпадающее: postCreate идёт на каждом старте контейнера,
+    # и дёргать mtime дока, который никто не менял, незачем — редакторы и
+    # watch-режимы это замечают.
+    if [ -f "$to" ] && [ ! -L "$to" ] && cmp -s "$tmp" "$to"; then
+      rm -f "$tmp"
+    else
+      rm -f "$to"          # мог быть симлинком прошлой схемы
+      mv "$tmp" "$to"
+    fi
+  else
+    rm -f "$to"            # мог быть копией, если режим дока сменили обратно
+    ln -sfn "$from" "$to"
+  fi
+  placed=$((placed + 1))
 done <<EOF
 $DOCS
 EOF
 
-log "Доки платформы: $linked разложено$([ "$kept" -gt 0 ] && echo ", $kept оставлено за проектом")"
+log "Доки платформы: $placed разложено$([ "$kept" -gt 0 ] && echo ", $kept оставлено за проектом")"

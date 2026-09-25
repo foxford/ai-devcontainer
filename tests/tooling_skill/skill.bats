@@ -256,6 +256,62 @@ run_skill() {
   assert_output "1"
 }
 
+# ── доки платформы в .gitignore и migrate ─────────────────────
+# AGENTS.platform.md раздаётся КОПИЕЙ (симлинк не переживает @-импорт в
+# CLAUDE.md), то есть выглядит обычным файлом проекта. Оба места, которые
+# раньше отличали «наше» по признаку симлинка, обязаны теперь смотреть на
+# маркер — иначе копия уедет в коммит, а migrate будет ругаться на здоровый
+# проект при каждом прогоне.
+
+# Разложить копию так, как это делает tooling/wire-docs.sh.
+make_generated_doc() {
+  { echo "<!-- ai-devcontainer:generated — копия из платформы -->"; echo "contract"; } \
+    > "$REPO_DIR/AGENTS.platform.md"
+}
+
+@test "sync: копия дока остаётся в .gitignore, хотя это настоящий файл" {
+  make_platform_skill "demo"
+  make_generated_doc
+  printf 'node_modules\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+  run bash -c "grep -qxF '/AGENTS.platform.md' '$REPO_DIR/.gitignore'"
+  assert_success
+}
+
+@test "sync: док, забранный проектом, в .gitignore не вносим — он трекается" {
+  make_platform_skill "demo"
+  echo "project override" > "$REPO_DIR/AGENTS.platform.md"
+  printf 'node_modules\n' > "$REPO_DIR/.gitignore"
+  run_skill sync
+  assert_success
+  run bash -c "grep -qxF '/AGENTS.platform.md' '$REPO_DIR/.gitignore'"
+  assert_failure
+}
+
+@test "migrate: нашу копию дока не принимает за вендоренную и не ругается" {
+  # Копия несёт маркер в шапке и с платформенным файлом байт в байт не
+  # совпадёт никогда — без проверки на маркер migrate жаловался бы всегда.
+  make_platform_skill "demo"
+  mkdir -p "$REPO_DIR/.agents/skills" "$PLATFORM_FIXTURE/docs"
+  echo "contract" > "$PLATFORM_FIXTURE/docs/AGENTS.platform.md"
+  make_generated_doc
+  run_skill migrate
+  assert_success
+  refute_output --partial "отличается от платформенного"
+  [ -f "$REPO_DIR/AGENTS.platform.md" ]
+}
+
+@test "migrate: вендоренная копия времён adc new убирается, как и раньше" {
+  make_platform_skill "demo"
+  mkdir -p "$REPO_DIR/.agents/skills" "$PLATFORM_FIXTURE/docs"
+  echo "contract" > "$PLATFORM_FIXTURE/docs/AGENTS.platform.md"
+  echo "contract" > "$REPO_DIR/AGENTS.platform.md"
+  run_skill migrate
+  assert_success
+  [ ! -e "$REPO_DIR/AGENTS.platform.md" ]
+}
+
 # ── диспетчер ─────────────────────────────────────────────────
 
 @test "неизвестная команда — ошибка" {
