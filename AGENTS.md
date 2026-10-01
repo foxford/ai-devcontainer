@@ -154,8 +154,8 @@ bash tests/run.sh   # весь bats-набор; для одного файла �
 - Правишь такой скилл — правь рамку, а не тело апстрима: диф остаётся мержабельным.
 
 Фронтенд-скиллы (`senior-frontend` как точка входа, `impeccable`,
-`design-taste-frontend`, `redesign-existing-projects`, `stitch-design-taste`)
-связаны в один маршрут: правило и мандаты — в `docs/AGENTS.platform.md`, секция
+`design-taste-frontend`, `redesign-existing-projects`, `stitch-design-taste`,
+`ui-ux-pro-max`) связаны в один маршрут: правило и мандаты — в `docs/AGENTS.platform.md`, секция
 «Фронтенд», разводка по задачам — в `skills/senior-frontend/references/composition_map.md`.
 
 ## MCP-серверы
