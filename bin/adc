@@ -23,7 +23,9 @@
 #                                        status / link / save / unlink
 #
 # И ТАМ, И ТАМ — читают репозиторий и раскладывают файлы внутри него:
-#   adc update            — на хосте: git pull платформы + пересборка
+#   adc update [--branch v0|main] — v0: обновить старую платформу;
+#                                  main: установить новый ADC с копией старой платформы
+#                                  на хосте: git pull платформы + пересборка
 #                                        образа; в контейнере: то же, что sync
 #   adc sync [--adopt] [--type <t>]
 #                                      — применить платформу к проекту: скиллы,
@@ -517,11 +519,22 @@ cmd_ensure_image() {
 }
 
 cmd_update() {
+	local branch="v0"
+	while [ $# -gt 0 ]; do
+	  case "$1" in
+	    --branch) branch="${2:?--branch требует значения}"; shift 2 ;;
+	    *) err "update: неизвестный аргумент «$1»"; return 1 ;;
+	  esac
+	done
+	case "$branch" in v0|main) ;; *) err "update: поддерживаются ветки v0 и main"; return 1 ;; esac
   # Внутри контейнера клон read-only: ни pull, ни сборки образа. Но человек,
   # набравший «update», хочет «приведи всё в актуальное состояние» — падать
   # ошибкой вместо этого бессмысленно. Делаем ту часть, которая здесь возможна,
   # и честно говорим, чего не сделали и где это делается.
   if [ ! -w "$PLATFORM_ROOT" ]; then
+	if [ "$branch" != "v0" ]; then
+	  err "Переход на main выполняется только на хосте."; return 1
+	fi
     warn "Клон платформы примонтирован read-only: pull и пересборка образа — только с хоста."
     echo "    Применяю то, что уже приехало в $PLATFORM_ROOT:" >&2
     echo
@@ -529,8 +542,35 @@ cmd_update() {
     return 0
   fi
   if git -C "$PLATFORM_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+	if [ "$branch" = "main" ]; then
+	  log "Получаю установщик нового ADC; старые файлы пока остаются на месте."
+	  git -C "$PLATFORM_ROOT" fetch origin main
+	  local rev installer remote
+	  rev="$(git -C "$PLATFORM_ROOT" rev-parse FETCH_HEAD)"
+	  git -C "$PLATFORM_ROOT" cat-file -e "$rev:go.mod"
+	  git -C "$PLATFORM_ROOT" cat-file -e "$rev:runtime/orca-lock.json"
+	  if ! git -C "$PLATFORM_ROOT" cat-file -e "$rev:bin/adc/host/legacy_install.go"; then
+	    err "В main ещё нет установщика перехода с v0. Повтори после публикации исправления main."
+	    return 1
+	  fi
+	  installer="$(mktemp)"
+	  if ! git -C "$PLATFORM_ROOT" show "$rev:install.sh" > "$installer"; then
+	    rm -f "$installer"; return 1
+	  fi
+	  remote="$(git -C "$PLATFORM_ROOT" remote get-url origin)"
+	  local result=0
+	  AI_DEVCONTAINER_HOME="$PLATFORM_ROOT" AI_DEVCONTAINER_REPO="$remote" sh "$installer" || result=$?
+	  rm -f "$installer"
+	  return "$result"
+	fi
     log "Обновляю платформу: $PLATFORM_ROOT"
-    git -C "$PLATFORM_ROOT" pull --ff-only
+	git -C "$PLATFORM_ROOT" fetch origin v0:refs/remotes/origin/v0
+	if git -C "$PLATFORM_ROOT" show-ref --verify --quiet refs/heads/v0; then
+	  git -C "$PLATFORM_ROOT" switch v0
+	else
+	  git -C "$PLATFORM_ROOT" switch -c v0 --track origin/v0
+	fi
+	git -C "$PLATFORM_ROOT" merge --ff-only origin/v0
   else
     warn "$PLATFORM_ROOT — не git-клон, пропускаю pull"
   fi
@@ -1067,7 +1107,7 @@ cmd_doctor() {
 case "${1:-help}" in
   new)          shift; cmd_new "$@";;
   ensure-image) cmd_ensure_image;;
-  update)       cmd_update;;
+  update)       shift; cmd_update "$@";;
   doctor)       cmd_doctor;;
   skill)        shift; cmd_skill "$@";;
   mcp)          shift; cmd_mcp "$@";;
