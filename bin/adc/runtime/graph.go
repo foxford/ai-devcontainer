@@ -168,6 +168,14 @@ func GraphView(root string, port int) error {
 	}
 }
 func graphHandler(root string) http.Handler {
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return http.NotFoundHandler()
+	}
+	root, err = filepath.Abs(canonical)
+	if err != nil {
+		return http.NotFoundHandler()
+	}
 	files := http.FileServer(http.Dir(root))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, part := range strings.Split(r.URL.Path, "/") {

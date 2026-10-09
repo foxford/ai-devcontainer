@@ -193,7 +193,7 @@ func TestGraphPathLabelsAndNativeHTTP(t *testing.T) {
 	body, err := io.ReadAll(response.Body)
 	response.Body.Close()
 	if err != nil || response.StatusCode != 200 || string(body) != page {
-		t.Fatal("large HTML truncated or failed")
+		t.Fatalf("large HTML: status=%d bytes=%d want=%d read error=%v", response.StatusCode, len(body), len(page), err)
 	}
 	writeFixture(t, filepath.Join(dir, ".private"), "must not serve")
 	response, err = http.Get(server.URL + "/.private")
@@ -203,6 +203,28 @@ func TestGraphPathLabelsAndNativeHTTP(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != 404 {
 		t.Fatal("served private output")
+	}
+}
+
+func TestGraphServerCanonicalizesOutputRoot(t *testing.T) {
+	requireSymlinks(t)
+	parent := t.TempDir()
+	real := filepath.Join(parent, "real")
+	writeFixture(t, filepath.Join(real, "graph.html"), "graph via symlinked parent")
+	link := filepath.Join(parent, "alias")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(graphHandler(link))
+	defer server.Close()
+	response, err := http.Get(server.URL + "/graph.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK || string(body) != "graph via symlinked parent" {
+		t.Fatalf("canonical output: %d %q %v", response.StatusCode, body, err)
 	}
 }
 

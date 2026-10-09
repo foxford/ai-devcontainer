@@ -6,10 +6,20 @@ adc_platform=${AI_DEVCONTAINER_HOME:-"$HOME/.local/share/ai-devcontainer"}
 adc_state=${ADC_HOME:-"$HOME/.adc"}
 adc_repo=${AI_DEVCONTAINER_REPO:-https://github.com/foxford/ai-devcontainer.git}
 
-if [ -d "$adc_platform/.git" ] && [ -f "$adc_platform/bin/adc" ] && [ ! -f "$adc_platform/go.mod" ]; then
-  printf '%s\n' 'Legacy ADC detected. Keep this checkout unchanged; set AI_DEVCONTAINER_HOME and ADC_HOME to new directories and install with --no-shell. See docs/migration.md.' >&2
-  exit 1
-fi
+adc_legacy=0
+if [ -d "$adc_platform/.git" ] && [ -f "$adc_platform/bin/adc" ] && [ ! -f "$adc_platform/go.mod" ]; then adc_legacy=1; fi
+# Do not pull a new tree over a legacy clone. Compile the replacement helper
+# separately; its Go implementation verifies a copy before switching the clone.
+adc_stage=''
+adc_tmp=''
+adc_cleanup() {
+  if [ -n "$adc_stage" ]; then rm -rf "$adc_stage"; fi
+  if [ -n "$adc_tmp" ]; then rm -rf "$adc_tmp"; fi
+}
+trap adc_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
 
 adc_root() {
   if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
@@ -59,15 +69,23 @@ if ! [ -x "$adc_go" ]; then
     darwin/arm64) adc_digest=353df43a7811ce284c8938b5f3c7df40b7bfb6f56cb165b150bc40b5e2dd541f;;
   esac
   adc_tmp=$(mktemp -d)
-  trap 'rm -rf "$adc_tmp"' EXIT HUP INT TERM
   curl -fL --retry 3 "https://go.dev/dl/go1.26.1.$adc_os-$adc_arch.tar.gz" -o "$adc_tmp/go.tar.gz"
   if command -v shasum >/dev/null 2>&1; then adc_actual=$(shasum -a 256 "$adc_tmp/go.tar.gz" | awk '{print $1}');
   else adc_actual=$(openssl dgst -sha256 "$adc_tmp/go.tar.gz" | awk '{print $NF}'); fi
   if [ "$adc_actual" != "$adc_digest" ]; then printf '%s\n' 'Go checksum mismatch' >&2; exit 1; fi
   mkdir -p "$adc_state/toolchains/go1.26.1"
   tar -xzf "$adc_tmp/go.tar.gz" -C "$adc_state/toolchains/go1.26.1"
+  rm -rf "$adc_tmp"
 fi
-if [ -d "$adc_platform/.git" ]; then
+export GOCACHE="$adc_state/cache/go-build" GOMODCACHE="$adc_state/cache/go-mod"
+if [ "$adc_legacy" = 1 ]; then
+  if [ -z "${AI_DEVCONTAINER_REPO:-}" ]; then adc_repo=$(git -C "$adc_platform" remote get-url origin); fi
+  mkdir -p "$adc_state/bootstrap"
+  adc_stage=$(mktemp -d "$adc_state/bootstrap/legacy-XXXXXX")
+  git clone --branch main "$adc_repo" "$adc_stage/platform"
+  (cd "$adc_stage/platform" && "$adc_go" build -trimpath -o "$adc_stage/adc" ./bin/adc)
+  AI_DEVCONTAINER_HOME="$adc_stage/platform" ADC_HOME="$adc_state" "$adc_stage/adc" bootstrap-replace-legacy "$adc_platform"
+elif [ -d "$adc_platform/.git" ]; then
   git -C "$adc_platform" pull --ff-only
 else
   git clone --branch main "$adc_repo" "$adc_platform"
@@ -77,7 +95,6 @@ if [ ! -f "$adc_platform/go.mod" ] || [ ! -f "$adc_platform/runtime/orca-lock.js
   exit 1
 fi
 export AI_DEVCONTAINER_HOME="$adc_platform" ADC_HOME="$adc_state"
-export GOCACHE="$adc_state/cache/go-build" GOMODCACHE="$adc_state/cache/go-mod"
 mkdir -p "$adc_state/bin"
 (cd "$adc_platform" && "$adc_go" build -trimpath -o "$adc_state/bin/adc" ./bin/adc)
 "$adc_state/bin/adc" install "$@"

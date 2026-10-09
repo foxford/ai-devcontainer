@@ -38,6 +38,23 @@ func commandTree() *cobra.Command {
 		}
 		return (*host.App)(a).Install(*noOrca, *noShell, root)
 	}
+	replaceLegacy := leaf(root, "bootstrap-replace-legacy <path>", "Сохранить старую платформу и переключить её на main", cobra.ExactArgs(1), "bootstrap-replace-legacy")
+	replaceLegacy.Hidden = true
+	applyUpdate := &cobra.Command{Use: "bootstrap-apply-update", Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error {
+		a, err := shared.New()
+		if err != nil {
+			return err
+		}
+		if err = a.RequireHost(); err != nil {
+			return err
+		}
+		h := (*host.App)(a)
+		if err = h.EnsureImage(); err != nil {
+			return err
+		}
+		return h.Install(false, false, root)
+	}}
+	root.AddCommand(applyUpdate)
 	workspace := &cobra.Command{Use: "workspace", Short: "Управление общей Docker средой", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return c.Help() }}
 	root.AddCommand(workspace)
 	init := leaf(workspace, "init [name]", "Создать workspace без изменения проектов", cobra.MaximumNArgs(1), "workspace", "init")
@@ -121,7 +138,7 @@ func commandTree() *cobra.Command {
 	migrate := leaf(root, "migrate <project> <old-agent-home>", "Импорт авторизаций или переход со старых devcontainer", cobra.ExactArgs(2), "migrate")
 	legacyMigrationCommands(migrate)
 	leaf(root, "restore <backup-directory>", "Восстановить backup выбранных авторизаций", cobra.ExactArgs(1), "restore")
-	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить платформу и образ"}, {"doctor", "Проверить установку и workspace"}} {
+	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить ADC, completion, Orca и образ"}, {"doctor", "Проверить установку и workspace"}} {
 		leaf(root, s.name, s.help, cobra.NoArgs, s.name)
 	}
 	internal := leaf(root, "runtime-init", "Подготовить runtime перед Orca", cobra.NoArgs, "runtime-init")

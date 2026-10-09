@@ -49,15 +49,17 @@ func runtimeUser() error {
 			return err
 		}
 	}
-	info, err := os.Stat("/home/node")
-	if err != nil {
-		return err
-	}
-	owner := int(info.Sys().(*syscall.Stat_t).Uid)
 	for _, root := range []string{"/home/node", "/opt/ai-tools", "/workspace", "/var/lib/adc"} {
 		if err := os.MkdirAll(root, 0755); err != nil {
 			return err
 		}
+		info, err := os.Stat(root)
+		if err != nil {
+			return err
+		}
+		// usermod may already reassign home while the tools volume still has
+		// the image's UID. Each persistent tree has its own previous owner.
+		owner := int(info.Sys().(*syscall.Stat_t).Uid)
 		if owner != uid && (root == "/home/node" || root == "/opt/ai-tools") {
 			if err := reown(root, owner, uid, gid); err != nil {
 				return err

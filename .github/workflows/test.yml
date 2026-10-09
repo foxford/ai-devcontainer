@@ -18,7 +18,12 @@ jobs:
           go-version: '1.26.1'
       - name: Formatting
         shell: bash
-        run: test -z "$(gofmt -l bin/adc)"
+        run: |
+          unformatted=$(gofmt -l bin/adc)
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
       - name: PowerShell bootstrap syntax
         if: runner.os == 'Windows'
         shell: pwsh

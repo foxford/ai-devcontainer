@@ -4,9 +4,7 @@ $platform = if ($env:AI_DEVCONTAINER_HOME) { $env:AI_DEVCONTAINER_HOME } else { 
 $state = if ($env:ADC_HOME) { $env:ADC_HOME } else { Join-Path $HOME '.adc' }
 $repo = if ($env:AI_DEVCONTAINER_REPO) { $env:AI_DEVCONTAINER_REPO } else { 'https://github.com/foxford/ai-devcontainer.git' }
 
-if ((Test-Path (Join-Path $platform '.git')) -and (Test-Path (Join-Path $platform 'bin/adc') -PathType Leaf) -and -not (Test-Path (Join-Path $platform 'go.mod'))) {
-    throw 'Legacy ADC detected. Keep this checkout unchanged; set AI_DEVCONTAINER_HOME and ADC_HOME to new directories and install with -NoShell. See docs/migration.md.'
-}
+$legacy = (Test-Path (Join-Path $platform '.git')) -and (Test-Path (Join-Path $platform 'bin/adc') -PathType Leaf) -and -not (Test-Path (Join-Path $platform 'go.mod'))
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     $winget = Join-Path ([IO.Path]::GetTempPath()) 'adc-AppInstaller.msixbundle'
@@ -31,7 +29,32 @@ if (-not (Test-Path $go)) {
     Expand-Archive $archive -DestinationPath $toolchain -Force
     Remove-Item $archive
 }
-if (Test-Path (Join-Path $platform '.git')) {
+$env:GOCACHE = Join-Path $state 'cache/go-build'
+$env:GOMODCACHE = Join-Path $state 'cache/go-mod'
+if ($legacy) {
+    if (-not $env:AI_DEVCONTAINER_REPO) {
+        $repo = git -C $platform remote get-url origin
+        if ($LASTEXITCODE -ne 0) { throw 'Legacy origin is unavailable' }
+    }
+    $stage = Join-Path $state ('bootstrap/legacy-' + [Guid]::NewGuid().ToString('N'))
+    $source = Join-Path $stage 'platform'
+    $helper = Join-Path $stage 'adc.exe'
+    New-Item -ItemType Directory -Force $stage | Out-Null
+    try {
+        git clone --branch main $repo $source
+        if ($LASTEXITCODE -ne 0) { throw 'Bootstrap clone failed' }
+        Push-Location $source
+        try { & $go build -trimpath -o $helper ./bin/adc; if ($LASTEXITCODE -ne 0) { throw 'Bootstrap build failed' } }
+        finally { Pop-Location }
+        $env:AI_DEVCONTAINER_HOME = $source
+        $env:ADC_HOME = $state
+        & $helper bootstrap-replace-legacy $platform
+        if ($LASTEXITCODE -ne 0) { throw 'Legacy platform replacement failed; original agent data remains intact' }
+    } finally {
+        $env:AI_DEVCONTAINER_HOME = $platform
+        Remove-Item -LiteralPath $stage -Recurse -Force
+    }
+} elseif (Test-Path (Join-Path $platform '.git')) {
     git -C $platform pull --ff-only
     if ($LASTEXITCODE -ne 0) { throw 'Platform update failed' }
 } else {
@@ -43,8 +66,6 @@ if (-not (Test-Path (Join-Path $platform 'go.mod')) -or -not (Test-Path (Join-Pa
 }
 $env:AI_DEVCONTAINER_HOME = $platform
 $env:ADC_HOME = $state
-$env:GOCACHE = Join-Path $state 'cache/go-build'
-$env:GOMODCACHE = Join-Path $state 'cache/go-mod'
 $bin = Join-Path $state 'bin/adc.exe'
 New-Item -ItemType Directory -Force (Split-Path $bin) | Out-Null
 Push-Location $platform

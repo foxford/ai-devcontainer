@@ -349,7 +349,7 @@ func (a *App) InstallShell(root *cobra.Command) error {
 	if e != nil {
 		return e
 	}
-	if e = shared.AtomicWrite(filepath.Join(bin, name), b, 0755); e != nil {
+	if e = installCommandFile(filepath.Join(bin, name), b); e != nil {
 		return e
 	}
 	comp := filepath.Join(a.State, "completions")

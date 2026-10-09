@@ -1,8 +1,8 @@
 # Переход со старых devcontainer
 
-Поднимайте новый ADC рядом со старым. Миграция копирует данные из проверенной резервной копии в отдельные новые тома. Старые каталоги, контейнеры и тома остаются на месте.
+Установите новый ADC вместо старой команды в PATH, затем скопируйте данные прежних devcontainer в общую среду. Миграция читает проверенную резервную копию и пишет в новые тома. Исходные каталоги, контейнеры и тома остаются на месте для восстановления; старым CLI пользоваться не требуется.
 
-Не запускайте старый adc update на ветке main: он обновит общий клон платформы и удалит скрипты, которыми пользуются старые devcontainer. Ветка v0 сохраняет прежнюю реализацию. Переключение ветки само по себе не переносит данные.
+Ветка v0 сохраняет прежнюю реализацию и содержит исправленный updater с выбором ветки. Старый CLI, установленный до этого исправления, делает только git pull: сначала получите обновление v0 или используйте обычный установщик main. Переключение ветки само по себе не переносит данные.
 
 ## Что сохраняется
 
@@ -24,48 +24,38 @@ SQLite-базы разных проектов не объединяются: в 
 
 Backup содержит авторизации, секреты и настройки контейнеров. Его каталог создаётся с правами 700, файлы с правами 600. На Windows доступ дополнительно определяется ACL родительского каталога: выбирайте собственный пользовательский каталог. Резервная копия не зашифрована. Симлинки сохраняются как ссылки в архиве; внешние цели ссылок должны быть отдельными маунтами, чтобы их данные тоже попали в backup. Не распаковывайте архивы поверх живых каталогов.
 
-## Установка рядом с v0
+## Установка нового ADC
 
-На Linux/macOS выполните:
+Сохраните работу агентов и редактора и остановите прежние devcontainer. Список можно посмотреть через docker ps --filter label=devcontainer.local_folder --format '{{.Names}}'. Контейнеры и тома не удаляйте: они нужны для резервного копирования. Установщик откажется менять платформу, если её использует работающий контейнер.
 
-~~~sh
-curl -fsSL https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.sh | AI_DEVCONTAINER_HOME="$HOME/.local/share/adc-v1" ADC_HOME="$HOME/.adc-v1" sh -s -- --no-shell
-~~~
-
-Флаг --no-shell оставляет PATH и профили оболочек прежними. Это сохраняет старый adc, необходимый initializeCommand существующих devcontainer. Обычная установка без этого флага добавляет новый ADC в PATH и настраивает completion. Bootstrap отказывается обновлять обнаруженный старый Bash-клон: для параллельной установки нужны новые каталоги платформы и состояния.
-
-В текущем терминале создайте функцию для обращения к новой установке:
+Для перехода через установленный ADC получите исправленный updater один раз на хосте:
 
 ~~~sh
-adc_v1() {
-  AI_DEVCONTAINER_HOME="$HOME/.local/share/adc-v1" ADC_HOME="$HOME/.adc-v1" "$HOME/.adc-v1/bin/adc" "$@"
-}
+git -C "$HOME/.local/share/ai-devcontainer" fetch origin v0 && git -C "$HOME/.local/share/ai-devcontainer" switch --detach FETCH_HEAD
+adc update --branch main
 ~~~
+
+Первая команда нужна только старому CLI, который ещё не умеет выбирать ветку. Если в платформенном клоне есть ручные изменения, сохраните их перед переходом. Без --branch main исправленный updater продолжает работать с v0. После перехода обновления выполняются обычным adc update.
+
+Можно сразу запустить обычный установщик на Linux/macOS:
+
+~~~sh
+curl -fsSL https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.sh | sh
+~~~
+
+Оба способа используют стандартные каталоги ~/.local/share/ai-devcontainer и ~/.adc; дополнительные каталоги установки и отдельная команда adc_v1 не нужны. Прежде чем переключить платформу на main, установщик копирует её вместе с .git в ~/.adc/backups/platform-v0/<снимок>/checkout и сверяет содержимое. Файл backup.json фиксирует прежнюю ревизию oldRev. Затем новый adc заменяет старую команду в PATH и получает completion. После установки откройте новый терминал.
+
+Эта копия сохраняет саму платформу. Данные агентов, проектов и томов сохраняются следующим шагом. Старые каталоги ~/.ai-devcontainer-dev и тома установка не меняет. Сохраните также ~/.adc/backups/platform-v0: это отдельная резервная копия прежней платформы.
 
 В WSL используйте Linux-команду внутри того дистрибутива, в котором работал прежний ADC. Каждую машину мигрируйте отдельно: пути, профили и наборы проектов могут различаться.
 
-На Windows установку можно выполнить в отдельном процессе PowerShell:
+На Windows выполните в PowerShell:
 
 ~~~powershell
-powershell -NoProfile -Command '$env:AI_DEVCONTAINER_HOME=Join-Path $HOME ".local/share/adc-v1"; $env:ADC_HOME=Join-Path $HOME ".adc-v1"; & ([scriptblock]::Create((Invoke-RestMethod "https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.ps1"))) -NoShell'
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.ps1')))
 ~~~
 
-Для новых команд в текущем PowerShell:
-
-~~~powershell
-function adc_v1 {
-    $previousPlatform = $env:AI_DEVCONTAINER_HOME
-    $previousState = $env:ADC_HOME
-    try {
-        $env:AI_DEVCONTAINER_HOME = Join-Path $HOME '.local/share/adc-v1'
-        $env:ADC_HOME = Join-Path $HOME '.adc-v1'
-        & (Join-Path $HOME '.adc-v1/bin/adc.exe') @args
-    } finally {
-        $env:AI_DEVCONTAINER_HOME = $previousPlatform
-        $env:ADC_HOME = $previousState
-    }
-}
-~~~
+Установщик сразу добавляет новую команду в PATH текущего PowerShell и сохраняет настройки для следующих терминалов. До завершения перехода не пересоздавайте старые devcontainer: их initializeCommand рассчитан на прежний CLI. Уже созданные контейнеры доступны через Docker для резервного копирования.
 
 ## План и резервная копия
 
@@ -78,15 +68,15 @@ docker ps -a --filter label=devcontainer.local_folder --format "{{.Names}}"
 Создайте план, указав нужные контейнеры. Команда читает маунты и записывает JSON; исходные данные остаются нетронутыми. Идентификаторы проектов находятся в containers[].project.
 
 ~~~sh
-adc_v1 migrate legacy plan --container old-container-a --container old-container-b --output migration-plan.json
+adc migrate legacy plan --container old-container-a --container old-container-b --output migration-plan.json
 ~~~
 
 Проверьте пути и список ресурсов в migration-plan.json. Затем завершите работу агентов и проектных сервисов, остановите контейнеры. Сохраняйте изменения редактора до создания снимка; во время копирования не меняйте исходные файлы с хоста.
 
 ~~~sh
 docker stop old-container-a old-container-b
-adc_v1 migrate legacy backup migration-plan.json --output "$HOME/adc-backup-v0"
-adc_v1 migrate legacy verify "$HOME/adc-backup-v0"
+adc migrate legacy backup migration-plan.json --output "$HOME/adc-backup-v0"
+adc migrate legacy verify "$HOME/adc-backup-v0"
 ~~~
 
 В PowerShell используйте "$HOME/adc-backup-v0" тем же образом. Каталог backup должен быть новым и находиться вне исходных маунтов. Команда отказывается копировать работающие или приостановленные контейнеры и проверяет, что их ресурсы не используются другими работающими контейнерами. Если общий том используют дополнительные devcontainer, их тоже потребуется остановить. Завершённый backup имеет backup.json; без него импорт запрещён. Перед импортом заново проверяются размеры и SHA-256 всех архивов.
@@ -98,17 +88,17 @@ adc_v1 migrate legacy verify "$HOME/adc-backup-v0"
 Выберите профиль, чьи аккаунты и настройки станут общими. В примере его ID — portal-frontend. Имя workspace должно быть новым: существующие контейнеры и тома не перезаписываются. Импорт требует, чтобы в новом ADC_HOME ещё не были зарегистрированы проекты.
 
 ~~~sh
-adc_v1 migrate legacy import "$HOME/adc-backup-v0" --account portal-frontend --workspace developer-v1
-adc_v1 workspace start
+adc migrate legacy import "$HOME/adc-backup-v0" --account portal-frontend --workspace developer-v1
+adc workspace start
 ~~~
 
 На машине с другими проектами используйте ID из её собственного плана. Если путь Docker недоступен в файловой системе хоста или checkout находится по новому адресу, задайте путь явно:
 
 ~~~powershell
-adc_v1 migrate legacy import "$HOME/adc-backup-v0" --account portal-frontend --workspace developer-v1 --project "portal-frontend=C:\Development\portal-frontend" --project "frontend-platform=C:\Development\frontend-platform"
+adc migrate legacy import "$HOME/adc-backup-v0" --account portal-frontend --workspace developer-v1 --project "portal-frontend=C:\Development\portal-frontend" --project "frontend-platform=C:\Development\frontend-platform"
 ~~~
 
-Импорт не удаляет старые .devcontainer и не выбирает возможности по стеку автоматически. Подключите нужные возможности через .agents/project.json и выполните adc_v1 sync --all. В общий home переносятся обычные пользовательские файлы; платформенные skills, виртуальные окружения и старые ссылки инструментов остаются в backup. Новая установка доставляет свои инструменты. Перенесённые hooks и настройки, которые ссылаются на пути v0, проверьте перед запуском агентов.
+Импорт не удаляет старые .devcontainer и не выбирает возможности по стеку автоматически. Подключите нужные возможности через .agents/project.json и выполните adc sync --all. В общий home переносятся обычные пользовательские файлы; платформенные skills, виртуальные окружения и старые ссылки инструментов остаются в backup. Новая установка доставляет свои инструменты. Перенесённые hooks и настройки, которые ссылаются на пути v0, проверьте перед запуском агентов.
 
 Отчёт находится внутри новой среды в ~/.adc-legacy/report.json. Проверьте аккаунты, сессии, MCP, vault и запуск проектных сервисов. Данные дополнительных профилей доступны в ~/.adc-legacy/<project>/home. Не удаляйте старые каталоги и тома до проверки всех нужных данных.
 
@@ -119,18 +109,19 @@ adc_v1 migrate legacy import "$HOME/adc-backup-v0" --account portal-frontend --w
 Если копирование завершилось, но процесс прервался до регистрации проектов, выполните:
 
 ~~~sh
-adc_v1 migrate legacy finish
+adc migrate legacy finish
 ~~~
 
 Если сама копия оборвалась, finish откажется её активировать. Оригиналы и backup остаются на месте. Для повторного импорта используйте новый ADC_HOME, создайте там workspace командой workspace init и выберите другое --workspace. Частичные новые тома не удаляются автоматически.
 
-Для возврата к прежней работе остановите новый workspace и запустите сохранённые контейнеры:
+Для возврата остановите новый workspace. Если установка переключала прежний платформенный клон на main, сначала верните его на oldRev из ~/.adc/backups/platform-v0/<снимок>/backup.json. Только затем запускайте старые контейнеры: им нужны скрипты v0 по прежнему пути маунта.
 
 ~~~sh
-adc_v1 workspace stop
+adc workspace stop
+git -C "$HOME/.local/share/ai-devcontainer" switch --detach <oldRev>
 docker start old-container-a old-container-b
 ~~~
 
-Не запускайте обе среды одновременно на одних writable checkout: данные агентов разделены, исходники общие. Полный rollback последующих правок в репозиториях требует отдельного восстановления нужных файлов из backup. Пока идёт проверка перехода, оставляйте старый adc в PATH и старый клон платформы на v0. После окончательного перехода adc_v1 install активирует новый PATH и completion; initializeCommand старых devcontainer тогда потребуется вызывать через путь к сохранённому v0 ADC.
+Не запускайте обе среды одновременно на одних writable checkout: данные агентов разделены, исходники общие. Полный rollback последующих правок в репозиториях требует отдельного восстановления нужных файлов из backup. Для команд v0 при восстановлении используйте ~/.local/share/ai-devcontainer/bin/adc с явным AI_DEVCONTAINER_HOME на этот клон. Новый бинарник в PATH не поддерживает прежний prepare.
 
 Первый workspace start доставляет новые управляемые файлы и блоки в подключённые checkout. Простая остановка новой среды не откатывает эту раздачу: для возврата восстановите нужные служебные файлы из backup и повторите синхронизацию через v0, сохранив последующие ручные изменения. Если требуется проверить новую среду без изменений исходных checkout, сначала сделайте их отдельные копии и передайте пути к копиям через --project при импорте.

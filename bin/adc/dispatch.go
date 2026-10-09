@@ -127,6 +127,8 @@ func dispatch(args []string) error {
 			return r.Restore(args[1:])
 		}
 		return forward("", false)
+	case "bootstrap-replace-legacy":
+		return h.ReplaceLegacyInstallation(args[1])
 	case "ensure-image":
 		if err := ctx.RequireHost(); err != nil {
 			return err
@@ -136,10 +138,7 @@ func dispatch(args []string) error {
 		if ctx.Runtime {
 			return r.Sync([]string{"--all"})
 		}
-		if err := shared.Run("", "git", "-C", ctx.Platform, "pull", "--ff-only"); err != nil {
-			return err
-		}
-		return h.EnsureImage()
+		return h.Update()
 	case "doctor":
 		if ctx.Runtime {
 			return r.Doctor()

@@ -4,6 +4,8 @@ TestDockerLegacyMigration выполняет полный backup/import двух
 
 Все проверки платформы запускаются через Go. Unit-тесты лежат рядом с кодом в `bin/adc/`, Docker smoke в `bin/adc/integration/`.
 
+TestPOSIXBootstrapReplacesLegacyAtDefaultPaths проверяет переход старого клона на main, копию платформы, замену прежнего симлинка ADC и доставку PATH/completion в изолированный HOME. Компилятор подменяется готовым настоящим Go-бинарником; системные пакеты и Orca desktop не устанавливаются. Go-тесты отдельно проверяют блокировку активных контейнеров, грязного клона и разошедшейся main. TestDockerRuntimeRemapsIndependentVolumeOwners запускает настоящий runtime с UID/GID 12345 и проверяет запись в home/tools и сохранение владельца внешней цели симлинка. HTTP-тесты проверяют отдачу большого графа через симлинк в пути каталога, включая macOS /var. .gitattributes закрепляет LF на всех ОС.
+
 | Команда | Что проверяет |
 |---|---|
 | `gofmt -l bin/adc` | Форматирование; вывод должен быть пустым |

@@ -3,15 +3,12 @@ package host
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
-	goruntime "runtime"
 	"strings"
 	"testing"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
-	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
 )
 
 func inspectFixture(t *testing.T, id, project, folder string) legacyInspection {
@@ -97,31 +94,6 @@ func TestLegacyPlanRefusesUnknownAndDuplicateCheckouts(t *testing.T) {
 				t.Fatal("accepted ambiguous migration")
 			}
 		})
-	}
-}
-
-func TestBootstrapRefusesToPullOverV0(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("POSIX bootstrap")
-	}
-	old := t.TempDir()
-	for _, name := range []string{".git", "bin"} {
-		if err := os.Mkdir(filepath.Join(old, name), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	file := filepath.Join(old, "bin/adc")
-	if err := os.WriteFile(file, []byte("legacy executable"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("sh", filepath.Join(testutil.Root(t), "install.sh"), "--no-shell")
-	cmd.Env = append(os.Environ(), "AI_DEVCONTAINER_HOME="+old, "ADC_HOME="+filepath.Join(t.TempDir(), "new"))
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "Legacy ADC detected") {
-		t.Fatalf("bootstrap did not stop before dependencies/pull: %v %s", err, output)
-	}
-	if data, err := os.ReadFile(file); err != nil || string(data) != "legacy executable" {
-		t.Fatal("bootstrap changed original")
 	}
 }
 
