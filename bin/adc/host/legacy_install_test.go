@@ -101,8 +101,11 @@ func TestPOSIXBootstrapReplacesLegacyAtDefaultPaths(t *testing.T) {
 	path := t.TempDir()
 	writeExecutable(filepath.Join(path, "docker"), "#!/bin/sh\ncase \"$1\" in ps) exit 0;; info) echo linux; exit 0;; *) exit 99;; esac\n")
 	writeExecutable(filepath.Join(path, "brew"), "#!/bin/sh\nexit 99\n")
+	for _, command := range []string{"powershell", "pwsh"} {
+		writeExecutable(filepath.Join(path, command), "#!/bin/sh\nprintf '%s\\n' \"$HOME/.config/powershell/profile.ps1\"\n")
+	}
 	cmd := exec.Command("sh", filepath.Join(testutil.Root(t), "install.sh"), "--no-orca")
-	cmd.Env = append(os.Environ(), "HOME="+home, "AI_DEVCONTAINER_HOME=", "ADC_HOME=", "ADC_RUNTIME=0", "AI_DEVCONTAINER_REPO=", "ADC_BOOTSTRAP_FIXTURE_BINARY="+helper, "PATH="+path+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cmd.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR=", "AI_DEVCONTAINER_HOME=", "ADC_HOME=", "ADC_RUNTIME=0", "AI_DEVCONTAINER_REPO=", "ADC_BOOTSTRAP_FIXTURE_BINARY="+helper, "PATH="+path+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if data, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("default-path bootstrap: %v %s", err, data)
 	}
