@@ -1,5 +1,7 @@
 # Проверки ADC
 
+TestDockerLegacyMigration выполняет полный backup/import двух старых devcontainer на отдельном Docker fixture: снимки маунтов и DinD, inactive profiles и projects, writable layer OpenCode, проверка контрольных сумм, выбор общего аккаунта, конфликты сессий, ссылка Hermes и сохранение после перезапуска. Тест использует фиктивные данные и не меняет рабочие контейнеры разработчика.
+
 Все проверки платформы запускаются через Go. Unit-тесты лежат рядом с кодом в `bin/adc/`, Docker smoke в `bin/adc/integration/`.
 
 | Команда | Что проверяет |

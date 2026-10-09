@@ -1,8 +1,12 @@
-param([switch]$NoOrca)
+param([switch]$NoOrca, [switch]$NoShell)
 $ErrorActionPreference = 'Stop'
 $platform = if ($env:AI_DEVCONTAINER_HOME) { $env:AI_DEVCONTAINER_HOME } else { Join-Path $HOME '.local/share/ai-devcontainer' }
 $state = if ($env:ADC_HOME) { $env:ADC_HOME } else { Join-Path $HOME '.adc' }
 $repo = if ($env:AI_DEVCONTAINER_REPO) { $env:AI_DEVCONTAINER_REPO } else { 'https://github.com/foxford/ai-devcontainer.git' }
+
+if ((Test-Path (Join-Path $platform '.git')) -and (Test-Path (Join-Path $platform 'bin/adc') -PathType Leaf) -and -not (Test-Path (Join-Path $platform 'go.mod'))) {
+    throw 'Legacy ADC detected. Keep this checkout unchanged; set AI_DEVCONTAINER_HOME and ADC_HOME to new directories and install with -NoShell. See docs/migration.md.'
+}
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     $winget = Join-Path ([IO.Path]::GetTempPath()) 'adc-AppInstaller.msixbundle'
@@ -48,8 +52,11 @@ try { & $go build -trimpath -o $bin ./bin/adc; if ($LASTEXITCODE -ne 0) { throw 
 finally { Pop-Location }
 $arguments = @('install')
 if ($NoOrca) { $arguments += '--no-orca' }
+if ($NoShell) { $arguments += '--no-shell' }
 & $bin @arguments
 if ($LASTEXITCODE -ne 0) { throw 'ADC install failed; see the diagnostic above' }
-$env:Path = (Split-Path $bin) + ';' + $env:Path
-$completion = Join-Path $state 'completions/adc.powershell'
-if (Test-Path $completion) { . $completion }
+if (-not $NoShell) {
+    $env:Path = (Split-Path $bin) + ';' + $env:Path
+    $completion = Join-Path $state 'completions/adc.powershell'
+    if (Test-Path $completion) { . $completion }
+}

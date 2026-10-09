@@ -152,6 +152,9 @@ func (a *App) EnsureImage() error {
 	return shared.Run("", "docker", "build", "--builder", "default", "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "-t", "adc-runtime:local", a.Platform)
 }
 func (a *App) Start(c shared.Config) error {
+	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {
+		return errors.New("миграция не завершена: adc migrate legacy finish; запуск среды заблокирован")
+	}
 	if e := a.EnsureImage(); e != nil {
 		return e
 	}

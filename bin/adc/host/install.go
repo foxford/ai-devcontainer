@@ -69,14 +69,16 @@ func download(client *http.Client, asset Artifact, dest string) error {
 	}
 	return os.Rename(f.Name(), dest)
 }
-func (a *App) Install(noOrca bool, root *cobra.Command) error {
+func (a *App) Install(noOrca, noShell bool, root *cobra.Command) error {
 	if e := a.shared().RequireHost(); e != nil {
 		return e
 	}
 	// Register the command first so a required Docker reboot does not leave the
 	// user unable to run the continuation suggested by the diagnostic.
-	if e := a.InstallShell(root); e != nil {
-		return e
+	if !noShell {
+		if e := a.InstallShell(root); e != nil {
+			return e
+		}
 	}
 	var pending *prerequisitePending
 	if e := a.Prerequisites(); e != nil && !errors.As(e, &pending) {
@@ -96,7 +98,11 @@ func (a *App) Install(noOrca bool, root *cobra.Command) error {
 		fmt.Println("Установка завершена. Перед workspace start:", pending.Error())
 		return nil
 	}
-	fmt.Println("Установка завершена. Откройте новый терминал; adc project add <path>; adc workspace start")
+	if noShell {
+		fmt.Println("Параллельная установка завершена. Используйте бинарник из ADC_HOME/bin с явными AI_DEVCONTAINER_HOME и ADC_HOME; PATH не изменён.")
+	} else {
+		fmt.Println("Установка завершена. Откройте новый терминал; adc project add <path>; adc workspace start")
+	}
 	return nil
 }
 

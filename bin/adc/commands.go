@@ -30,12 +30,13 @@ func commandTree() *cobra.Command {
 	}
 	install := leaf(root, "install", "Установить Docker, Orca, PATH и completion", cobra.NoArgs, "install")
 	noOrca := install.Flags().Bool("no-orca", false, "Пропустить установку клиента Orca")
+	noShell := install.Flags().Bool("no-shell", false, "Оставить PATH и профили оболочек без изменений для параллельной установки")
 	install.RunE = func(c *cobra.Command, args []string) error {
 		a, e := shared.New()
 		if e != nil {
 			return e
 		}
-		return (*host.App)(a).Install(*noOrca, root)
+		return (*host.App)(a).Install(*noOrca, *noShell, root)
 	}
 	workspace := &cobra.Command{Use: "workspace", Short: "Управление общей Docker средой", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return c.Help() }}
 	root.AddCommand(workspace)
@@ -117,8 +118,9 @@ func commandTree() *cobra.Command {
 	mcpGraph.Hidden = true
 	runtimeCommands(root)
 	helperCommands(root)
-	leaf(root, "migrate <project> <old-agent-home>", "С backup импортировать выбранные авторизации", cobra.ExactArgs(2), "migrate")
-	leaf(root, "restore <backup-directory>", "Восстановить backup общей среды", cobra.ExactArgs(1), "restore")
+	migrate := leaf(root, "migrate <project> <old-agent-home>", "Импорт авторизаций или переход со старых devcontainer", cobra.ExactArgs(2), "migrate")
+	legacyMigrationCommands(migrate)
+	leaf(root, "restore <backup-directory>", "Восстановить backup выбранных авторизаций", cobra.ExactArgs(1), "restore")
 	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить платформу и образ"}, {"doctor", "Проверить установку и workspace"}} {
 		leaf(root, s.name, s.help, cobra.NoArgs, s.name)
 	}
@@ -126,6 +128,13 @@ func commandTree() *cobra.Command {
 	internal.Hidden = true
 	serve := leaf(root, "runtime-serve", "Запустить сервер общей среды", cobra.NoArgs, "runtime-serve")
 	serve.Hidden = true
+	for _, item := range []struct {
+		use   string
+		count int
+	}{{"runtime-legacy-archive <source>", 1}, {"runtime-legacy-import <backup> <account>", 2}, {"runtime-legacy-finish <fingerprint> <account>", 2}} {
+		command := leaf(root, item.use, "Внутренний помощник миграции", cobra.ExactArgs(item.count), strings.Fields(item.use)[0])
+		command.Hidden = true
+	}
 	leaf(root, "banner", "Показать подсказки среды и текущего проекта", cobra.NoArgs, "banner")
 	omni := leaf(root, "omniroute [arguments...]", "CLI OmniRoute внутри общей среды", cobra.ArbitraryArgs, "omniroute")
 	omni.DisableFlagParsing = true

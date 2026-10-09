@@ -6,6 +6,11 @@ adc_platform=${AI_DEVCONTAINER_HOME:-"$HOME/.local/share/ai-devcontainer"}
 adc_state=${ADC_HOME:-"$HOME/.adc"}
 adc_repo=${AI_DEVCONTAINER_REPO:-https://github.com/foxford/ai-devcontainer.git}
 
+if [ -d "$adc_platform/.git" ] && [ -f "$adc_platform/bin/adc" ] && [ ! -f "$adc_platform/go.mod" ]; then
+  printf '%s\n' 'Legacy ADC detected. Keep this checkout unchanged; set AI_DEVCONTAINER_HOME and ADC_HOME to new directories and install with --no-shell. See docs/migration.md.' >&2
+  exit 1
+fi
+
 adc_root() {
   if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
 }

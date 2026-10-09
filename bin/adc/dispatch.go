@@ -107,6 +107,21 @@ func dispatch(args []string) error {
 			return r.Migrate(args[1:])
 		}
 		return h.Migrate(args[1:])
+	case "runtime-legacy-archive":
+		if !ctx.Runtime || len(args) != 2 {
+			return errors.New("помощник архива доступен только внутри ADC")
+		}
+		return runtimecmd.LegacyArchive(args[1], os.Stdout)
+	case "runtime-legacy-import":
+		if !ctx.Runtime || len(args) != 3 {
+			return errors.New("помощник импорта доступен только внутри ADC")
+		}
+		return runtimecmd.LegacyImportEnvironment(args[1], args[2])
+	case "runtime-legacy-finish":
+		if !ctx.Runtime || len(args) != 3 {
+			return errors.New("помощник проверки доступен только внутри ADC")
+		}
+		return runtimecmd.VerifyLegacyImport("/home/node", args[1], args[2])
 	case "restore":
 		if ctx.Runtime {
 			return r.Restore(args[1:])
