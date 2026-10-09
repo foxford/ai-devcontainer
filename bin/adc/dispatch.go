@@ -1,0 +1,146 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/foxford/ai-devcontainer/bin/adc/host"
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
+	runtimecmd "github.com/foxford/ai-devcontainer/bin/adc/runtime"
+)
+
+// Select the execution side once. Runtime handlers never launch Docker;
+// host handlers forward runtime work explicitly to the registered workspace.
+func dispatch(args []string) error {
+	ctx, err := shared.New()
+	if err != nil {
+		return err
+	}
+	h, r := (*host.App)(ctx), (*runtimecmd.App)(ctx)
+	if len(args) == 0 {
+		return errors.New("adc --help")
+	}
+	forward := func(dir string, tty bool) error { return h.Exec(dir, append([]string{"adc"}, args...), tty) }
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "workspace":
+		if ctx.Runtime {
+			if len(args) == 2 && args[1] == "map" {
+				return ctx.Locked(func() error {
+					config, err := ctx.Load()
+					if err != nil {
+						return err
+					}
+					return r.WriteMap(config)
+				})
+			}
+			return errors.New("управление Docker workspace доступно на хосте")
+		}
+		return h.Workspace(args[1:])
+	case "project":
+		return h.ProjectCommand(args[1:])
+	case "sync":
+		if ctx.Runtime {
+			return r.Sync(args[1:])
+		}
+		dir := ""
+		if len(args) == 1 {
+			dir = wd
+		}
+		return forward(dir, false)
+	case "graphify-mcp":
+		if !ctx.Runtime || len(args) != 2 {
+			return errors.New("graphify-mcp доступен только внутри ADC")
+		}
+		return r.GraphMCP(args[1], os.Stdin, os.Stdout)
+	case "runtime-init":
+		if !ctx.Runtime {
+			return errors.New("runtime-init доступен только внутри ADC")
+		}
+		return r.Init()
+	case "runtime-serve":
+		return r.Serve()
+	case "banner":
+		if !ctx.Runtime {
+			return errors.New("баннер доступен внутри ADC")
+		}
+		return runtimecmd.Banner(wd, os.Getenv("ADC_WORKSPACE"), os.Stdout)
+	case "omniroute":
+		if ctx.Runtime {
+			return r.OmniRoute(args[1:])
+		}
+		return forward("", true)
+	case "tools":
+		if ctx.Runtime {
+			return r.Helpers(wd, args[1:])
+		}
+		if len(args) > 1 && (args[1] == "claude-snapshot" || args[1] == "install") {
+			return forward("", true)
+		}
+		return forward(wd, true)
+	case "worktree":
+		if ctx.Runtime {
+			return r.Worktree(args[1:])
+		}
+		return forward("", false)
+	case "agent":
+		if ctx.Runtime {
+			return r.Agent(args[1:])
+		}
+		return forward(wd, true)
+	case "orca", "task":
+		argv := []string{"orca"}
+		if args[0] == "task" {
+			argv = append(argv, "orchestration", "task")
+		}
+		argv = append(argv, args[1:]...)
+		if ctx.Runtime {
+			return shared.Run("", argv[0], argv[1:]...)
+		}
+		return h.Exec("", argv, false)
+	case "migrate":
+		if ctx.Runtime {
+			return r.Migrate(args[1:])
+		}
+		return h.Migrate(args[1:])
+	case "restore":
+		if ctx.Runtime {
+			return r.Restore(args[1:])
+		}
+		return forward("", false)
+	case "ensure-image":
+		if err := ctx.RequireHost(); err != nil {
+			return err
+		}
+		return h.EnsureImage()
+	case "update":
+		if ctx.Runtime {
+			return r.Sync([]string{"--all"})
+		}
+		if err := shared.Run("", "git", "-C", ctx.Platform, "pull", "--ff-only"); err != nil {
+			return err
+		}
+		return h.EnsureImage()
+	case "doctor":
+		if ctx.Runtime {
+			return r.Doctor()
+		}
+		return h.Doctor()
+	case "skill", "mcp", "plans":
+		if ctx.Runtime {
+			return r.Tool(wd, args)
+		}
+		return forward(wd, true)
+	case "runtime-tool":
+		if !ctx.Runtime {
+			return errors.New("runtime-tool доступен только внутри ADC")
+		}
+		return r.Tool(wd, args[1:])
+	default:
+		return fmt.Errorf("неизвестная команда %s; adc --help", args[0])
+	}
+}

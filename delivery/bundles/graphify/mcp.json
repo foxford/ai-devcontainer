@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "graphify": {
+      "command": "adc",
+      "args": [
+        "graphify-mcp",
+        "${REPO_ROOT}"
+      ],
+      "env": {
+        "GRAPHIFY_NO_AUTO_REFRESH": "1",
+        "GRAPHIFY_NO_TIPS": "1"
+      }
+    }
+  }
+}

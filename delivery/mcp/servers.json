@@ -1,0 +1,60 @@
+{
+  "//": "Платформенные определения MCP. delivery/catalog.json выбирает серверы по имени; bin/adc/runtime/mcp_plan.go объединяет выбранные определения с пользовательским, проектным и локальным слоями.",
+  "//1": "x-requires проверяет условия доставки: env:ИМЯ требует непустую переменную, path:/путь требует существующий файл. Недоступный сервер не доставляется, причина выводится при синхронизации.",
+  "//1a": "x-oauth: true обозначает ручную авторизацию. Такой сервер не добавляется в Codex автоматически; синхронизация выводит инструкции.",
+  "//2": "Версии закреплены, чтобы запуск агента не менял версию сервера.",
+  "mcpServers": {
+    "playwright": {
+      "//": "Браузер как инструмент агента: открыть страницу, кликнуть, снять снапшот/скрин, прочитать консоль и сеть. Основной инструмент для разведки живого приложения.",
+      "//1": "--headless и --no-sandbox обязательны: в контейнере нет ни дисплея, ни user namespaces под песочницу chromium. --browser chromium тоже обязателен, хоть и выглядит дефолтом: без него сервер идёт в канал Google Chrome и падает с 'Chromium distribution chrome is not found at /opt/google/chrome/chrome' — а Chrome в образе нет и не будет, мы возим браузер playwright.",
+      "//2": "--isolated — профиль в памяти: каждая сессия агента начинается с чистого браузера и не тащит чужие куки.",
+      "//3": "Браузер для этой версии устанавливает bin/adc/runtime/browsers.go, читая пин отсюда.",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.79",
+        "--browser",
+        "chromium",
+        "--headless",
+        "--no-sandbox",
+        "--isolated",
+        "--output-dir",
+        "${REPO_ROOT}/.playwright-mcp"
+      ],
+      "env": {}
+    },
+    "chrome-devtools": {
+      "//": "НЕ дубль playwright: здесь профилирование и диагностика — трейсы производительности, разбор сети, троттлинг CPU и канала, Core Web Vitals. Playwright — про «сделать», этот — про «почему медленно/сломано».",
+      "//1": "Использует Chromium, установленный ADC. bin/adc/runtime/browsers.go обновляет ссылку chrome-current при изменении пина браузера.",
+      "//2": "Два дефолта выключены осознанно: --no-performance-crux (иначе URL из трейсов уходят в Google CrUX API) и --no-usage-statistics (телеметрия Google). Для внутренних проектов ни то, ни другое наружу отдавать не надо.",
+      "//3": "--chromeArg=--no-sandbox через `=`, а не пробелом: yargs принял бы `--no-sandbox` за собственный флаг и выключил бы sandbox-опцию вместо передачи её в Chrome.",
+      "x-requires": [
+        "path:/home/node/.cache/ms-playwright/chrome-current"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.7.0",
+        "--headless",
+        "--isolated",
+        "--executablePath",
+        "/home/node/.cache/ms-playwright/chrome-current",
+        "--chromeArg=--no-sandbox",
+        "--no-performance-crux",
+        "--no-usage-statistics"
+      ],
+      "env": {}
+    },
+    "figma": {
+      "//": "Официальный remote-сервер Figma: чтение фреймов, токенов дизайна, генерация кода по выделению. Токенов в конфиге нет — авторизация только по OAuth.",
+      "//1": "Требует FIGMA_MCP_ENABLED=1 в .agents/mcp.secrets.env проекта. Выбор возможности figma сам по себе не запускает OAuth.",
+      "//2": "Логин выполняется вручную у выбранного агента. x-oauth запрещает автоматическое добавление сервера в Codex, чтобы подготовка среды не ожидала интерактивного входа.",
+      "x-requires": [
+        "env:FIGMA_MCP_ENABLED"
+      ],
+      "x-oauth": true,
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    }
+  }
+}

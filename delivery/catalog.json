@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "base": {
+    "instructions": [
+      "instructions/AGENTS.platform.md"
+    ],
+    "skills": "skills",
+    "mcp": {
+      "source": "mcp/servers.json",
+      "servers": []
+    },
+    "documents": [
+      {
+        "source": "instructions/AGENTS.platform.md",
+        "target": "AGENTS.platform.md",
+        "mode": "copy"
+      },
+      {
+        "source": "documents/skills/README.md",
+        "target": ".agents/skills/README.md",
+        "mode": "link"
+      },
+      {
+        "source": "documents/plans/README.md",
+        "target": "plans/README.md",
+        "mode": "link"
+      },
+      {
+        "source": "mcp/secrets.env.example",
+        "target": ".agents/mcp.secrets.env.example",
+        "mode": "link"
+      }
+    ]
+  },
+  "capabilities": {
+    "pnpm-nx": {
+      "description": "Правила pnpm/Nx и документация устройства монорепы",
+      "instructions": [
+        "instructions/capabilities/pnpm-nx.md"
+      ],
+      "documents": [
+        {
+          "source": "documents/monorepo/README.md",
+          "target": "MONOREPO.md",
+          "mode": "link"
+        }
+      ]
+    },
+    "changesets": {
+      "description": "Правила изменений публикуемых пакетов и Changesets",
+      "instructions": [
+        "instructions/capabilities/changesets.md"
+      ]
+    },
+    "playwright": {
+      "description": "Правила проектных e2e и браузеров Playwright",
+      "instructions": [
+        "instructions/capabilities/playwright.md"
+      ],
+      "mcp": [
+        "playwright"
+      ]
+    },
+    "figma": {
+      "description": "MCP Figma с явной авторизацией",
+      "instructions": [
+        "instructions/capabilities/figma.md"
+      ],
+      "mcp": [
+        "figma"
+      ]
+    },
+    "obsidian": {
+      "bundle": "bundles/obsidian/bundle.json"
+    },
+    "chrome-devtools": {
+      "description": "Диагностика фронтенда: производительность, сеть и Chrome DevTools",
+      "instructions": [
+        "instructions/capabilities/chrome-devtools.md"
+      ],
+      "mcp": [
+        "chrome-devtools"
+      ]
+    },
+    "frontend": {
+      "description": "Работа с веб-интерфейсом: правила frontend skills, браузер и диагностика",
+      "instructions": [
+        "instructions/capabilities/frontend.md",
+        "instructions/capabilities/chrome-devtools.md"
+      ],
+      "mcp": [
+        "playwright",
+        "chrome-devtools"
+      ]
+    },
+    "graphify": {
+      "bundle": "bundles/graphify/bundle.json"
+    }
+  }
+}

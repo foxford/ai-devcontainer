@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "obsidian",
+  "description": "MCP личного Obsidian vault на хосте",
+  "exports": {
+    "instructions": [
+      "instructions.md"
+    ],
+    "skills": [
+      "obsidian"
+    ],
+    "tools": [],
+    "documents": [],
+    "mcp": {
+      "source": "mcp.json",
+      "servers": [
+        "obsidian"
+      ]
+    }
+  }
+}

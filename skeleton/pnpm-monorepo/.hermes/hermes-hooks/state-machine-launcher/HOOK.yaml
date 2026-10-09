@@ -1,4 +1,0 @@
-name: state-machine-launcher
-description: Spawn the project's TS state machine when the Hermes gateway starts.
-events:
-  - gateway:startup

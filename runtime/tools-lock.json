@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "omniroute": {
+    "version": "3.8.51",
+    "scripts": "omniroute,keytar,onnxruntime-node,@parcel/watcher,@swc/core,protobufjs,esbuild"
+  }
+}

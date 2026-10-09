@@ -1,158 +1,78 @@
-#!/usr/bin/env bash
-# install.sh — бутстрап ai-devcontainer на машине разработчика.
-#
-#   curl -fsSL https://raw.githubusercontent.com/foxford/ai-devcontainer/main/install.sh | bash
-#
-# Делает:
-#   1. клонирует (или обновляет) платформу в ~/.local/share/ai-devcontainer
-#   2. кладёт CLI `adc` в ~/.local/bin
-#   3. создаёт персист-каталоги ~/.ai-devcontainer-dev/*
-#
-# Переопределения:
-#   AI_DEVCONTAINER_REPO — URL/путь репозитория (default ниже; локальный путь тоже работает)
-#   AI_DEVCONTAINER_HOME — куда ставить (default ~/.local/share/ai-devcontainer)
+#!/bin/sh
+# POSIX bootstrap for Linux/macOS. All platform operations live in the Go CLI.
+# Clones/updates its own platform source when piped to sh. No jq, rsync or system Go required.
+set -eu
+adc_platform=${AI_DEVCONTAINER_HOME:-"$HOME/.local/share/ai-devcontainer"}
+adc_state=${ADC_HOME:-"$HOME/.adc"}
+adc_repo=${AI_DEVCONTAINER_REPO:-https://github.com/foxford/ai-devcontainer.git}
 
-set -euo pipefail
-
-REPO="${AI_DEVCONTAINER_REPO:-git@github.com:foxford/ai-devcontainer.git}"
-DEST="${AI_DEVCONTAINER_HOME:-$HOME/.local/share/ai-devcontainer}"
-BIN_DIR="$HOME/.local/bin"
-
-C_GREEN='\033[0;32m'; C_YELLOW='\033[0;33m'; C_RESET='\033[0m'
-log()  { echo -e "${C_GREEN}==>${C_RESET} $*"; }
-warn() { echo -e "${C_YELLOW}!! ${C_RESET}$*" >&2; }
-
-command -v git >/dev/null 2>&1 || { echo "git не найден — поставь и повтори" >&2; exit 1; }
-
-# ── 0. preflight хоста ──────────────────────────────────────────
-# ОС и пакетный менеджер — по тому же принципу, что detect_os() в
-# tooling/setup.sh (тот слой ставит Node/pnpm ВНУТРИ образа при build; этот —
-# то, что нужно ДО докера, на голом хосте).
-detect_os() {
-  case "$(uname -s)" in
-    Darwin) echo "macos" ;;
-    Linux)  echo "linux" ;;
-    *)      echo "unknown" ;;
-  esac
+adc_root() {
+  if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
 }
-
-# WSL — тот же linux-путь установки; отдельная пометка нужна только для
-# докер-подсказки ниже (Docker Desktop с WSL2-backend, не системный docker).
-is_wsl() { uname -r 2>/dev/null | grep -qiE 'microsoft|wsl'; }
-
-detect_pkg_mgr() {
-  if command -v brew >/dev/null 2>&1; then echo brew
-  elif command -v apt-get >/dev/null 2>&1; then echo apt
-  elif command -v dnf >/dev/null 2>&1; then echo dnf
-  elif command -v pacman >/dev/null 2>&1; then echo pacman
-  fi
-}
-
-# Лёгкие зависимости — ставим молча, без запроса подтверждения (так же тихо,
-# как tooling/setup.sh уже ставит asdf).
-ensure_host_tool() {
-  local bin="$1" apt_pkg="$2" brew_pkg="$3" dnf_pkg="$4" pacman_pkg="$5"
-  command -v "$bin" >/dev/null 2>&1 && { log "$bin уже есть"; return 0; }
-
-  local mgr pkg=""
-  mgr="$(detect_pkg_mgr)"
-  case "$mgr" in
-    brew)   pkg="$brew_pkg" ;;
-    apt)    pkg="$apt_pkg" ;;
-    dnf)    pkg="$dnf_pkg" ;;
-    pacman) pkg="$pacman_pkg" ;;
-  esac
-
-  if [ -z "$mgr" ] || [ -z "$pkg" ]; then
-    warn "$bin не найден, пакетный менеджер не определён — поставь вручную"
-    return 0
-  fi
-
-  log "Ставлю $bin ($mgr install $pkg)..."
-  case "$mgr" in
-    brew)   brew install "$pkg" ;;
-    apt)    sudo apt-get update -qq && sudo apt-get install -y "$pkg" ;;
-    dnf)    sudo dnf install -y "$pkg" ;;
-    pacman) sudo pacman -Sy --noconfirm "$pkg" ;;
-  esac
-}
-
-# Docker — НЕ так тихо, как rsync/jq: на Linux меняет группы пользователя
-# (нужен перелогин), на macOS первый запуск Docker.app требует ручного
-# system-level разрешения — headless это сделать нельзя, только предупредить.
-ensure_docker() {
-  if command -v docker >/dev/null 2>&1; then
-    if docker info >/dev/null 2>&1; then
-      log "docker уже есть и запущен"
-    else
-      warn "docker установлен, но демон не отвечает — запусти Docker Desktop или \`sudo systemctl start docker\`"
+adc_unix=$(uname -s)
+case "$adc_unix" in
+  Linux)
+    if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+      if command -v apt-get >/dev/null 2>&1; then
+        adc_root apt-get update
+        adc_root apt-get install -y git curl ca-certificates tar gzip
+      elif command -v dnf >/dev/null 2>&1; then
+        adc_root dnf install -y git curl ca-certificates tar gzip
+      elif command -v pacman >/dev/null 2>&1; then
+        adc_root pacman -S --needed --noconfirm git curl ca-certificates tar gzip
+      else
+        printf '%s\n' 'Unsupported package manager; use apt, dnf or pacman.' >&2; exit 1
+      fi
     fi
-    return 0
-  fi
-
-  case "$(detect_os)" in
-    macos)
-      if ! command -v brew >/dev/null 2>&1; then
-        warn "docker не найден, Homebrew тоже — поставь Docker Desktop вручную: https://www.docker.com/products/docker-desktop"
-        return 0
+    adc_os=linux;;
+  Darwin)
+    if ! command -v brew >/dev/null 2>&1; then
+      adc_brew_script=$(mktemp)
+      curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$adc_brew_script"
+      if [ -t 1 ] && [ -r /dev/tty ]; then
+        /bin/bash "$adc_brew_script" </dev/tty
+      else
+        /bin/bash "$adc_brew_script"
       fi
-      log "Ставлю Docker Desktop (brew install --cask docker)..."
-      brew install --cask docker
-      warn "Открой Docker.app один раз вручную — первый запуск просит system-level разрешение, headless это сделать нельзя"
-      ;;
-    linux)
-      log "Ставлю docker (get.docker.com)..."
-      curl -fsSL https://get.docker.com | sh
-      sudo usermod -aG docker "$USER"
-      warn "Добавлен в группу docker — перелогинься или выполни \`newgrp docker\`, чтобы это применилось без sudo"
-      if is_wsl; then
-        warn "WSL: нужен Docker Desktop на хосте с включённым WSL2-backend для этого дистрибутива (Settings → Resources → WSL Integration)"
-      fi
-      ;;
-    *)
-      warn "Не распознал ОС ($(uname -s)) — поставь docker вручную"
-      ;;
-  esac
-}
-
-log "ОС: $(detect_os)$(is_wsl && echo ' (WSL)')"
-ensure_host_tool rsync rsync rsync rsync rsync
-ensure_host_tool jq jq jq jq jq
-ensure_docker
-
-# ── 1. клон/обновление платформы ───────────────────────────────
-if [ -d "$DEST/.git" ]; then
-  log "Платформа уже есть — обновляю: $DEST"
-  git -C "$DEST" pull --ff-only
-else
-  log "Клонирую $REPO → $DEST"
-  mkdir -p "$(dirname "$DEST")"
-  git clone --depth 1 "$REPO" "$DEST"
-fi
-
-# ── 2. CLI на PATH ─────────────────────────────────────────────
-mkdir -p "$BIN_DIR"
-ln -sfn "$DEST/bin/adc" "$BIN_DIR/adc"
-chmod +x "$DEST/bin/adc"
-log "CLI: $BIN_DIR/adc"
-
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) warn "~/.local/bin не в PATH — добавь в свой rc: export PATH=\"\$HOME/.local/bin:\$PATH\"";;
+      rm -f "$adc_brew_script"
+      if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)";
+      else eval "$(/usr/local/bin/brew shellenv)"; fi
+    fi
+    if ! git --version >/dev/null 2>&1; then brew install git; fi
+    adc_os=darwin;;
+  *) printf '%s\n' 'Windows: use install.ps1 in PowerShell.' >&2; exit 1;;
 esac
+case "$(uname -m)" in x86_64|amd64) adc_arch=amd64;; arm64|aarch64) adc_arch=arm64;; *) printf '%s\n' 'Unsupported CPU architecture' >&2; exit 1;; esac
 
-# ── 3. корень персиста ─────────────────────────────────────────
-# Каталоги — PER-PROJECT (~/.ai-devcontainer-dev/<проект>/*), их создаёт
-# initializeCommand самого проекта. Здесь только корень.
-mkdir -p "$HOME/.ai-devcontainer-dev"
-log "Персист: ~/.ai-devcontainer-dev/<проект>/* (создаются при первом открытии проекта)"
-
-echo ""
-log "Готово. Проверяю окружение:"
-echo ""
-"$BIN_DIR/adc" doctor || true
-
-echo ""
-log "Дальше:"
-echo "      adc new my-service    # завести проект"
-echo "      # образ dev-base:local соберётся сам при первом Reopen in Container"
+# Bootstrap owns its compiler; no system Go or manual checkout is required.
+adc_go="$adc_state/toolchains/go1.26.1/go/bin/go"
+if ! [ -x "$adc_go" ]; then
+  case "$adc_os/$adc_arch" in
+    linux/amd64) adc_digest=031f088e5d955bab8657ede27ad4e3bc5b7c1ba281f05f245bcc304f327c987a;;
+    linux/arm64) adc_digest=a290581cfe4fe28ddd737dde3095f3dbeb7f2e4065cab4eae44dfc53b760c2f7;;
+    darwin/amd64) adc_digest=65773dab2f8cc4cd23d93ba6d0a805de150ca0b78378879292be0b903b8cdd08;;
+    darwin/arm64) adc_digest=353df43a7811ce284c8938b5f3c7df40b7bfb6f56cb165b150bc40b5e2dd541f;;
+  esac
+  adc_tmp=$(mktemp -d)
+  trap 'rm -rf "$adc_tmp"' EXIT HUP INT TERM
+  curl -fL --retry 3 "https://go.dev/dl/go1.26.1.$adc_os-$adc_arch.tar.gz" -o "$adc_tmp/go.tar.gz"
+  if command -v shasum >/dev/null 2>&1; then adc_actual=$(shasum -a 256 "$adc_tmp/go.tar.gz" | awk '{print $1}');
+  else adc_actual=$(openssl dgst -sha256 "$adc_tmp/go.tar.gz" | awk '{print $NF}'); fi
+  if [ "$adc_actual" != "$adc_digest" ]; then printf '%s\n' 'Go checksum mismatch' >&2; exit 1; fi
+  mkdir -p "$adc_state/toolchains/go1.26.1"
+  tar -xzf "$adc_tmp/go.tar.gz" -C "$adc_state/toolchains/go1.26.1"
+fi
+if [ -d "$adc_platform/.git" ]; then
+  git -C "$adc_platform" pull --ff-only
+else
+  git clone --branch main "$adc_repo" "$adc_platform"
+fi
+if [ ! -f "$adc_platform/go.mod" ] || [ ! -f "$adc_platform/runtime/orca-lock.json" ]; then
+  printf '%s\n' 'Platform checkout is incomplete: go.mod or runtime/orca-lock.json missing.' >&2
+  exit 1
+fi
+export AI_DEVCONTAINER_HOME="$adc_platform" ADC_HOME="$adc_state"
+export GOCACHE="$adc_state/cache/go-build" GOMODCACHE="$adc_state/cache/go-mod"
+mkdir -p "$adc_state/bin"
+(cd "$adc_platform" && "$adc_go" build -trimpath -o "$adc_state/bin/adc" ./bin/adc)
+"$adc_state/bin/adc" install "$@"

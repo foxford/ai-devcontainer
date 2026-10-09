@@ -1,0 +1,25 @@
+{
+  "version": "v1.4.223",
+  "assets": {
+    "linux/amd64": {
+      "url": "https://github.com/stablyai/orca/releases/download/v1.4.223/orca-linux.AppImage",
+      "sha256": "0e18acfe5c07ed193aff603fb636ba1fc59078112039a779a5443a8d53483d4b"
+    },
+    "linux/arm64": {
+      "url": "https://github.com/stablyai/orca/releases/download/v1.4.223/orca-linux-arm64.AppImage",
+      "sha256": "da7fd2e5dcd37f2582480edcfa0a4b7482d7c555df598bebaecd2785d4cb0f40"
+    },
+    "darwin/amd64": {
+      "url": "https://github.com/stablyai/orca/releases/download/v1.4.223/Orca-1.4.223-mac.zip",
+      "sha256": "adf6c1d652d2a950a434e770ad9f2ced47bb3a32cb37eab82a938f479d585131"
+    },
+    "darwin/arm64": {
+      "url": "https://github.com/stablyai/orca/releases/download/v1.4.223/Orca-1.4.223-arm64-mac.zip",
+      "sha256": "ee88c03049c9b763c9fc2994117710efccea539d816ed8dc98bedc7463fdaa46"
+    },
+    "windows/amd64": {
+      "url": "https://github.com/stablyai/orca/releases/download/v1.4.223/orca-windows-setup.exe",
+      "sha256": "45c6a1bc8ea4144e106974d006a0f591b600d02eb1b9195842471be79ad35bdb"
+    }
+  }
+}

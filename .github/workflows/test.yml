@@ -6,12 +6,58 @@ on:
   pull_request:
 
 jobs:
-  bats:
-    runs-on: ubuntu-latest
+  go:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          submodules: recursive
+          go-version: '1.26.1'
+      - name: Formatting
+        shell: bash
+        run: test -z "$(gofmt -l bin/adc)"
+      - name: PowerShell bootstrap syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'install.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build -o .build/adc ./bin/adc
 
-      - name: bats-тесты tooling/*.sh + bin/adc
-        run: bash tests/run.sh
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+      - run: go build -o /tmp/adc ./bin/adc
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+      - name: Two projects, native Orca worktree, agent adapter, recreation
+        run: go test -v -count=1 -timeout=35m ./bin/adc/integration
+        env:
+          ADC_INTEGRATION: '1'
+          ADC_TOOL_BUNDLES_INTEGRATION: '1'

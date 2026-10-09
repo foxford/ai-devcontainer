@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "graphify",
+  "description": "Локальный граф кода: индекс, скилл, CLI и MCP для агентов",
+  "exports": {
+    "instructions": [
+      "instructions.md"
+    ],
+    "skills": [
+      "graphify"
+    ],
+    "tools": [
+      {
+        "command": "graphify",
+        "package": "graphifyy",
+        "version": "0.9.82",
+        "installer": "uv"
+      }
+    ],
+    "documents": [],
+    "mcp": {
+      "source": "mcp.json",
+      "servers": [
+        "graphify"
+      ]
+    }
+  }
+}

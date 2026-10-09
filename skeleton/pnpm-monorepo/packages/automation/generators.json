@@ -1,9 +1,0 @@
-{
-  "generators": {
-    "package": {
-      "factory": "./src/generators/package/index",
-      "schema": "./src/generators/package/schema.json",
-      "description": "package generator"
-    }
-  }
-}
