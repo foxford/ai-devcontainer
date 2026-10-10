@@ -6,7 +6,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
@@ -47,6 +49,16 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 		}
 	}
 	var failures []error
+	containerLinks := 0
+	aliases := map[string]string{}
+	if !a.Runtime {
+		aliases["/workspaces/"+filepath.Base(root)] = root
+		aliases["/workspace/projects/"+filepath.Base(root)] = root
+		if registered != nil {
+			aliases[registered.RuntimePath] = root
+			aliases["/workspace/projects/"+registered.ID] = root
+		}
+	}
 	for _, name := range []string{".devcontainer", shared.LegacyProjectStateDir, shared.ProjectStateDir} {
 		info, err := os.Lstat(filepath.Join(root, name))
 		if os.IsNotExist(err) {
@@ -106,12 +118,11 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 			if err != nil {
 				return err
 			}
-			if !a.Runtime && (strings.HasPrefix(link, "/opt/") || strings.HasPrefix(link, "/home/node/")) {
-				fmt.Fprintf(out, "INFO: %s → %s — путь внутри контейнера\n", filepath.ToSlash(name), link)
-				return nil
-			}
-			if _, err := os.Stat(file); err != nil {
-				failures = append(failures, fmt.Errorf("неисправная ссылка %s → %s", filepath.ToSlash(name), link))
+			container, err := checkProjectLink(file, aliases, !a.Runtime)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("неисправная ссылка %s → %s: %w", filepath.ToSlash(name), link, err))
+			} else if container {
+				containerLinks++
 			}
 			return nil
 		})
@@ -119,9 +130,89 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 			failures = append(failures, err)
 		}
 	}
+	if containerLinks > 0 {
+		fmt.Fprintf(out, "INFO: ссылок с контейнерными путями: %d; полная проверка доступна внутри ADC\n", containerLinks)
+	}
 	for _, err := range failures {
 		fmt.Fprintln(out, "ERROR:", err)
 	}
 	fmt.Fprintln(out, "Проверка завершена; файлы не изменены.")
-	return errors.Join(failures...)
+	if len(failures) > 0 {
+		return fmt.Errorf("проверка проекта: ошибок %d; подробности выше", len(failures))
+	}
+	return nil
+}
+
+// Resolve relative chains and symlinked parents without assuming that a
+// container path must exist on the host. Known checkout aliases can be checked
+// against host files; unresolved runtime stores require a runtime inspection.
+func checkProjectLink(file string, aliases map[string]string, host bool) (bool, error) {
+	var prefixes []string
+	for prefix := range aliases {
+		prefixes = append(prefixes, prefix)
+	}
+	sort.Slice(prefixes, func(i, j int) bool { return len(prefixes[i]) > len(prefixes[j]) })
+	container := false
+	for redirects := 0; redirects < 64; redirects++ {
+		if host {
+			checkout := false
+			for _, prefix := range prefixes {
+				if file == prefix || strings.HasPrefix(file, prefix+"/") {
+					checkout = true
+					mapped := filepath.Join(aliases[prefix], filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(file, prefix), "/")))
+					if mapped != file {
+						file = mapped
+						container = true
+					}
+					break
+				}
+			}
+			if redirects > 0 && !checkout {
+				for _, prefix := range []string{"/opt/ai-devcontainer", "/opt/dev-platform", "/opt/ai-tools", "/opt/adc-agents", "/home/node", "/workspaces", "/workspace/projects"} {
+					if file == prefix || strings.HasPrefix(file, prefix+"/") {
+						return true, nil
+					}
+				}
+			}
+		}
+		file = filepath.Clean(file)
+		anchor := filepath.VolumeName(file) + string(filepath.Separator)
+		parts := strings.Split(strings.TrimPrefix(file, anchor), string(filepath.Separator))
+		current := anchor
+		redirected := false
+		for index, part := range parts {
+			current = filepath.Join(current, part)
+			info, err := os.Lstat(current)
+			if err != nil {
+				return container, err
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			target, err := os.Readlink(current)
+			if err != nil {
+				return container, err
+			}
+			// Windows stores volume-relative link targets with backslashes.
+			// Preserve the Linux namespace before resolving them on the host.
+			if slash := filepath.ToSlash(target); strings.HasPrefix(slash, "/") && !strings.HasPrefix(slash, "//") {
+				target = slash
+			}
+			if !shared.PortableAbs(target) {
+				target = filepath.Join(filepath.Dir(current), target)
+			}
+			if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") {
+				// POSIX runtime namespaces must stay POSIX even on Windows hosts.
+				file = path.Join(target, filepath.ToSlash(filepath.Join(parts[index+1:]...)))
+			} else {
+				file = filepath.Join(append([]string{target}, parts[index+1:]...)...)
+			}
+			redirected = true
+			break
+		}
+		if !redirected {
+			return container, nil
+		}
+	}
+	return container, errors.New("циклическая или слишком длинная цепочка ссылок")
 }

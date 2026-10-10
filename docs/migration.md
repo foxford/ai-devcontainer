@@ -40,6 +40,8 @@ adc update --branch main
 adc doctor project /path/to/repository
 ```
 
+Контейнерные пути могут быть недоступны на хосте: doctor показывает их количество, а полную проверку целей выполняет внутри ADC. Реально отсутствующие файлы текущего checkout и циклические ссылки остаются ошибками.
+
 Укажите старые контейнеры отдельными флагами --container. План нужен для определения хостовых путей проектов и профилей; создание плана ничего не копирует.
 
 ```sh
@@ -63,19 +65,19 @@ adc workspace start
 
 ## 5. Убрать проектный devcontainer и сбросить старую доставку
 
-После проверки новой среды остановите её и посмотрите план очистки нужного проекта:
+После проверки новой среды перейдите в корень проекта на хосте, остановите общую среду и посмотрите план очистки:
 
 ```sh
 adc workspace stop
-adc migrate legacy cleanup <project-id> --devcontainer
+adc migrate legacy cleanup . --devcontainer
 ```
 
 Если список подходит, примените очистку и восстановите доставку в общей среде:
 
 ```sh
-adc migrate legacy cleanup <project-id> --devcontainer --apply &&
+adc migrate legacy cleanup . --devcontainer --apply &&
 adc workspace start &&
-adc sync <project-id>
+adc sync .
 ```
 
 Перед удалением команда сохраняет и проверяет копию в ~/.adc/backups/project-cleanup. Исходники, проектные правила, .agents конфиги и форки, личные настройки агентов и новое состояние .adc сохраняются. Неподтверждённые файлы выводятся как «Оставить».
