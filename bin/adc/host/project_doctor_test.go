@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
 
 func TestProjectDoctorChecksWithoutChangingLegacyProject(t *testing.T) {
@@ -42,6 +44,32 @@ func TestProjectDoctorChecksWithoutChangingLegacyProject(t *testing.T) {
 	out.Reset()
 	if err := a.DoctorProject(root, &out); err == nil || !strings.Contains(out.String(), "неисправная ссылка") {
 		t.Fatal("doctor missed broken link")
+	}
+}
+
+func TestProjectDoctorRecognizesCurrentDirectory(t *testing.T) {
+	a, root := cleanupFixture(t)
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	if err := a.shared().Save(shared.Config{Version: shared.Schema, Name: "developer", Port: 6768, Projects: []shared.Project{{ID: "registered", Path: root, RuntimePath: root}}}); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Error(err)
+		}
+	})
+	var out bytes.Buffer
+	if err := a.DoctorProject(".", &out); err != nil || !strings.Contains(out.String(), "OK: подключён как registered") || strings.Contains(out.String(), "ещё не подключён") {
+		t.Fatal(err, out.String())
 	}
 }
 

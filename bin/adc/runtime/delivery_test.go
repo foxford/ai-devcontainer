@@ -22,6 +22,36 @@ func requireSymlinks(t *testing.T) {
 	}
 }
 
+func TestDeliveryRepairsLegacyDSHLinksAndPreservesForeignLinks(t *testing.T) {
+	requireSymlinks(t)
+	a := &App{Platform: testutil.Delivery(t), Runtime: true}
+	root := t.TempDir()
+	writeFixture(t, filepath.Join(a.Platform, "delivery", "skills", "example", "SKILL.md"), "---\nname: example\n---\nstock")
+	dsh := filepath.Join(root, ".dsh", "skills")
+	if err := os.MkdirAll(dsh, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{"example": "/workspaces/" + filepath.Base(root) + "/.claude/skills/example", "graphify": "/workspaces/" + filepath.Base(root) + "/.claude/skills/graphify", "personal": "/custom/personal"} {
+		if err := os.Symlink(target, filepath.Join(dsh, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		if err := a.DeliverSkills(root, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dsh, "example", "SKILL.md")); err != nil {
+		t.Fatal("active link was not repaired", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dsh, "graphify")); !os.IsNotExist(err) {
+		t.Fatal("obsolete delivered link retained", err)
+	}
+	if link, err := os.Readlink(filepath.Join(dsh, "personal")); err != nil || link != "/custom/personal" {
+		t.Fatal("foreign link modified", link, err)
+	}
+}
+
 func TestDocumentSelectionAndOwnership(t *testing.T) {
 	requireSymlinks(t)
 	a := &App{Platform: testutil.Delivery(t), Runtime: true}

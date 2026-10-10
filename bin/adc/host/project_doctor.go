@@ -19,7 +19,11 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 	root, err := shared.Abs(target)
 	var registered *shared.Project
 	if config, loadErr := a.shared().Load(); loadErr == nil {
-		if p, projectErr := a.shared().Project(config, target); projectErr == nil {
+		p, projectErr := a.shared().Project(config, target)
+		if projectErr != nil && err == nil {
+			p, projectErr = a.shared().Project(config, root)
+		}
+		if projectErr == nil {
 			registered = &p
 			path := p.Path
 			if a.Runtime {

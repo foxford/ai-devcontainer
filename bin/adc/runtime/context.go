@@ -346,10 +346,8 @@ func (a *App) Init() error {
 	if e != nil {
 		return e
 	}
-	for _, file := range []string{".zshrc", ".bashrc"} {
-		if e = shared.ManagedBlock(filepath.Join(home, file), "# adc:agents:start", "# adc:agents:end", ". /opt/ai-devcontainer/runtime/shell-env.sh"); e != nil {
-			return e
-		}
+	if e = initializeShells(home, "/opt/adc-shell"); e != nil {
+		return e
 	}
 	if os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
 		shared.StartupProgress("Установка браузеров выбранных MCP")

@@ -154,6 +154,9 @@ func TestDockerWorkspace(t *testing.T) {
 		adc(args...)
 	}
 	t.Log("building and starting the real runtime")
+	adc("ensure-image")
+	// Import creates a non-empty volume with volume-nocopy before first start.
+	docker("run", "--rm", "--network", "none", "--mount", "type=volume,src="+container+"-home,dst=/home/node,volume-nocopy", "--entrypoint", "sh", "adc-runtime:local", "-c", `mkdir -p /home/node/.codex; printf 'ADC_IMPORTED_AUTH\n' > /home/node/.codex/auth.json; printf '# adc:agents:start\n. /opt/ai-devcontainer/runtime/shell-env.sh\n# adc:agents:end\n' > /home/node/.zshrc`)
 	startup := adc("workspace", "start")
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
@@ -172,6 +175,11 @@ func TestDockerWorkspace(t *testing.T) {
 	}
 	execNode("bash", "-lc", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.bash_history" && node --version && go version && rustc --version && bun --version`)
 	execNode("zsh", "-lic", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.zsh_history"`)
+	assertContains(execNode("cat", "/home/node/.codex/auth.json"), "ADC_IMPORTED_AUTH")
+	zsh := docker("exec", "-t", "--user", "node", "--workdir", filepath.Join(tmp, "app-a"), container, "zsh", "-ic", `(( $+functions[omz] )) || exit 1; print -r -- "ADC_PROMPT=$PS1"`)
+	assertContains(zsh, "ADC · "+name)
+	assertContains(zsh, "ADC_PROJECT_BANNER_OK")
+	assertContains(zsh, "["+name+"]")
 	var status struct {
 		Result struct{ Runtime struct{ Reachable bool } }
 	}

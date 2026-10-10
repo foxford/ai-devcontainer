@@ -112,24 +112,10 @@ RUN curl -fL --retry 5 --retry-all-errors --retry-max-time 180 \
       -p https://github.com/zsh-users/zsh-completions \
       -x && test -d /home/node/.oh-my-zsh && \
     rm -f /tmp/zsh-in-docker.sh /tmp/adc-zsh-curl/.curlrc && rmdir /tmp/adc-zsh-curl
-RUN cat >> /home/node/.zshrc <<'RC'
-
-. /opt/ai-devcontainer/runtime/shell-env.sh
-setopt INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
-case "$PS1" in *"[${ADC_WORKSPACE}]"*) ;; *)
-  PS1="%{$fg[cyan]%}[${ADC_WORKSPACE}]%{$reset_color%} $PS1" ;;
-esac
-if [ -t 1 ]; then adc banner; fi
-RC
-RUN cat >> /home/node/.bashrc <<'RC'
-
-. /opt/ai-devcontainer/runtime/shell-env.sh
-shopt -s histappend
-PROMPT_COMMAND="history -a;${PROMPT_COMMAND}"
-if [ -t 1 ]; then adc banner; fi
-RC
-
 USER root
+# A migrated, already populated home volume hides all image home contents.
+RUN mkdir -p /opt/adc-shell && \
+    cp -a /home/node/.oh-my-zsh /home/node/.zshrc /home/node/.bashrc /opt/adc-shell/
 # Login shells also restore the toolchain and agent adapter paths.
 RUN printf '%s\n' '. /opt/ai-devcontainer/runtime/shell-env.sh' > /etc/profile.d/99-adc.sh
 COPY runtime/orca-lock.json /tmp/orca-lock.json

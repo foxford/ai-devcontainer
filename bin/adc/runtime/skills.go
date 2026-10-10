@@ -273,7 +273,7 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 	for _, entry := range entries {
 		path := filepath.Join(dsh, entry.Name())
 		link, err := os.Readlink(path)
-		if err == nil && strings.HasPrefix(link, dest+string(os.PathSeparator)) && !live[entry.Name()] {
+		if err == nil && managedDSHLink(root, entry.Name(), link) && !live[entry.Name()] {
 			if err := os.Remove(path); err != nil {
 				return err
 			}
@@ -287,15 +287,27 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 		path := filepath.Join(dsh, name)
 		if _, err := os.Lstat(path); err == nil {
 			link, err := os.Readlink(path)
-			if err != nil || !strings.HasPrefix(link, dest+string(os.PathSeparator)) {
+			if err != nil || !managedDSHLink(root, name, link) {
 				continue
 			}
 		}
-		if err := replaceLink(path, filepath.Join(dest, name)); err != nil {
+		if err := replaceLink(path, filepath.Join("..", "..", ".claude", "skills", name)); err != nil {
 			return err
 		}
 	}
 	return shared.ManagedBlock(filepath.Join(root, "AGENTS.md"), "<!-- adc:skills:start -->", "<!-- adc:skills:end -->", "Скиллы и их область применения: [AGENTS.skills.md](AGENTS.skills.md).")
+}
+
+func managedDSHLink(root, name, link string) bool {
+	if !filepath.IsAbs(link) {
+		link = filepath.Join(root, ".dsh", "skills", link)
+	}
+	for _, base := range []string{root, "/workspaces/" + filepath.Base(root)} {
+		if filepath.Clean(link) == filepath.Join(base, ".claude", "skills", name) {
+			return true
+		}
+	}
+	return false
 }
 
 func frontmatterField(text, key string) string {
