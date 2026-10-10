@@ -38,7 +38,7 @@ func graphFingerprint(root string) (string, error) {
 	}
 	sum := sha256.New()
 	for _, name := range strings.Split(string(files), "\x00") {
-		if name == "" || strings.HasPrefix(name, "graphify-out/") || strings.HasPrefix(name, ".ai-devcontainer/") || strings.HasPrefix(name, ".graphify") && name != ".graphifyignore" {
+		if name == "" || strings.HasPrefix(name, "graphify-out/") || strings.HasPrefix(name, ".ai-devcontainer/") || strings.HasPrefix(name, ".adc/") || strings.HasPrefix(name, ".graphify") && name != ".graphifyignore" {
 			continue
 		}
 		path, err := childPath(root, name)
@@ -75,6 +75,9 @@ func graphFingerprint(root string) (string, error) {
 }
 
 func EnsureGraph(root string, force bool, run commandRun, out io.Writer, versions ...string) error {
+	if err := shared.MigrateProjectState(root); err != nil {
+		return err
+	}
 	output := filepath.Join(root, "graphify-out")
 	if info, err := os.Lstat(output); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
 		return errors.New("graphify-out должен быть обычным каталогом checkout")
@@ -89,7 +92,7 @@ func EnsureGraph(root string, force bool, run commandRun, out io.Writer, version
 	if err != nil {
 		return err
 	}
-	state := filepath.Join(root, ".ai-devcontainer", "graphify-state.json")
+	state := filepath.Join(root, shared.ProjectStateDir, "graphify-state.json")
 	var previous struct {
 		Fingerprint string
 		Version     string

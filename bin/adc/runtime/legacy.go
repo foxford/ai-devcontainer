@@ -22,11 +22,30 @@ import (
 
 // LegacyArchive streams a mount without following links. A changed regular file
 // fails the snapshot instead of returning a deceptively successful tar.
-func LegacyArchive(root string, out io.Writer) error {
+func LegacyArchive(root string, out io.Writer, selected ...string) error {
 	tw := tar.NewWriter(out)
 	err := filepath.WalkDir(root, func(file string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if len(selected) > 0 {
+			rel, err := filepath.Rel(root, file)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			keep := rel == "."
+			for _, wanted := range selected {
+				if rel == wanted || strings.HasPrefix(wanted, rel+"/") {
+					keep = true
+				}
+			}
+			if !keep {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 		}
 		info, err := os.Lstat(file)
 		if err != nil {
@@ -94,19 +113,7 @@ type legacyImportReport struct {
 	Fingerprint   string   `json:"fingerprint"`
 }
 
-func legacyHomeMount(destination string) (string, string) {
-	for _, suffix := range []string{".config/opencode", ".local/share/opencode", ".claude.json", ".claude", ".codex", ".hermes", ".dsh", ".history"} {
-		if strings.HasSuffix(destination, "/"+suffix) {
-			return suffix, strings.TrimSuffix(destination, "/"+suffix)
-		}
-	}
-	for _, suffix := range []string{"obsidian", "obsidian-vault"} {
-		if strings.HasSuffix(destination, "/"+suffix) {
-			return suffix, strings.TrimSuffix(destination, "/"+suffix)
-		}
-	}
-	return "", ""
-}
+func legacyHomeMount(destination string) (string, string) { return legacy.HomeMount(destination) }
 
 func legacyManagedFile(name string) bool {
 	for _, prefix := range []string{".claude/skills", ".codex/skills", ".hermes/skills", ".dsh/skills", ".config/opencode/skills", ".hermes/hermes-agent", ".hermes/.venv"} {
@@ -290,6 +297,14 @@ func ImportLegacy(dir, account, home, tools string, uid, gid int) error {
 		"Claude/Codex session files скопированы без изменения cwd и содержимого. Для старого cwd может потребоваться явный resume по ID; SQLite и другие общие базы не объединяются.",
 		"Ссылки и управляемые skills/venv остаются в исходных архивах; новая платформа доставляет свои инструменты и навыки.",
 	}}
+	if b.Scope == legacy.MountedProfiles {
+		report.Notes = []string{
+			"Репозитории остаются на хосте и подключаются bind-маунтами; импорт их не меняет.",
+			"Скопированы только примонтированные профили агентов и общий MCP/Hermes store. Оригиналы сохранены.",
+			"Кеши, старые контейнеры и DinD-тома остаются на месте. Непримонтированные данные writable layer не импортированы.",
+			"Все выбранные профили сохранены в .adc-legacy/<project>/home; настройки общего home выбраны через --account.",
+		}
+	}
 	sharedTools := map[string]bool{}
 	hermesLinks := map[string]bool{}
 	copied := map[string]bool{}
@@ -387,22 +402,24 @@ func ImportLegacy(dir, account, home, tools string, uid, gid int) error {
 		}
 		// docker export omits mounted data but captures agent stores that were
 		// accidentally left in the writable layer (e.g. OpenCode).
-		archive := b.Archives["container-"+c.ID]
-		err = readLegacyTar(filepath.Join(dir, archive.File), archive.SHA256, func(h *tar.Header, name string, r io.Reader) error {
-			prefix := strings.TrimPrefix(oldHome, "/") + "/"
-			if !strings.HasPrefix(name, prefix) {
-				return nil
-			}
-			rel := strings.TrimPrefix(name, prefix)
-			for _, allowed := range []string{".claude", ".codex", ".hermes", ".dsh", ".claude.json", ".config/opencode", ".local/share/opencode", ".history", "obsidian", "obsidian-vault"} {
-				if rel == allowed || strings.HasPrefix(rel, allowed+"/") {
-					return copyEntry(c.Project, rel, h, r)
+		archive, hasLayer := b.Archives["container-"+c.ID]
+		if hasLayer {
+			err = readLegacyTar(filepath.Join(dir, archive.File), archive.SHA256, func(h *tar.Header, name string, r io.Reader) error {
+				prefix := strings.TrimPrefix(oldHome, "/") + "/"
+				if !strings.HasPrefix(name, prefix) {
+					return nil
 				}
+				rel := strings.TrimPrefix(name, prefix)
+				for _, allowed := range []string{".claude", ".codex", ".hermes", ".dsh", ".claude.json", ".config/opencode", ".local/share/opencode", ".history", "obsidian", "obsidian-vault"} {
+					if rel == allowed || strings.HasPrefix(rel, allowed+"/") {
+						return copyEntry(c.Project, rel, h, r)
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return err
 			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
 		for _, m := range c.Mounts {
 			if m.Resource == "" {

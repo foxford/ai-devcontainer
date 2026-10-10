@@ -5,6 +5,7 @@ import (
 	"github.com/foxford/ai-devcontainer/bin/adc/host"
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"github.com/spf13/cobra"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +21,7 @@ func Run(args []string) error {
 // operations do not print usage and never parse a user's shell command string.
 func commandTree() *cobra.Command {
 	root := &cobra.Command{Use: "adc", Short: "Общая изолированная среда разработчика", SilenceErrors: true, SilenceUsage: true}
-	root.Version = "0.1.0"
+	root.Version = shared.BuildVersion()
 	leaf := func(parent *cobra.Command, use, short string, n cobra.PositionalArgs, prefix ...string) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Args: n, RunE: func(cmd *cobra.Command, args []string) error {
 			return dispatch(append(append([]string{}, prefix...), args...))
@@ -139,7 +140,17 @@ func commandTree() *cobra.Command {
 	legacyMigrationCommands(migrate)
 	leaf(root, "restore <backup-directory>", "Восстановить backup выбранных авторизаций", cobra.ExactArgs(1), "restore")
 	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить ADC, completion, Orca и образ"}, {"doctor", "Проверить установку и workspace"}} {
-		leaf(root, s.name, s.help, cobra.NoArgs, s.name)
+		command := leaf(root, s.name, s.help, cobra.NoArgs, s.name)
+		if s.name == "doctor" {
+			check := &cobra.Command{Use: "project <path|id>", Short: "Проверить проект, состояние доставки и ссылки без изменений", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+				a, err := shared.New()
+				if err != nil {
+					return err
+				}
+				return (*host.App)(a).DoctorProject(args[0], cmd.OutOrStdout())
+			}}
+			command.AddCommand(check)
+		}
 	}
 	internal := leaf(root, "runtime-init", "Подготовить runtime перед Orca", cobra.NoArgs, "runtime-init")
 	internal.Hidden = true
@@ -148,7 +159,7 @@ func commandTree() *cobra.Command {
 	for _, item := range []struct {
 		use   string
 		count int
-	}{{"runtime-legacy-archive <source>", 1}, {"runtime-legacy-import <backup> <account>", 2}, {"runtime-legacy-finish <fingerprint> <account>", 2}} {
+	}{{"runtime-legacy-archive <source>", 1}, {"runtime-legacy-shared-archive <source>", 1}, {"runtime-legacy-import <backup> <account>", 2}, {"runtime-legacy-finish <fingerprint> <account>", 2}} {
 		command := leaf(root, item.use, "Внутренний помощник миграции", cobra.ExactArgs(item.count), strings.Fields(item.use)[0])
 		command.Hidden = true
 	}
@@ -157,5 +168,47 @@ func commandTree() *cobra.Command {
 	omni.DisableFlagParsing = true
 	agent := leaf(root, "agent <name> [arguments...]", "Запустить агента после доставки контекста checkout", cobra.MinimumNArgs(1), "agent")
 	agent.DisableFlagParsing = true
+	configureCommandSide(root, os.Getenv("ADC_RUNTIME") == "1")
 	return root
+}
+
+// Remove unavailable commands from help, completion and command resolution.
+// Commands forwarded by the host to the runtime remain available on both sides.
+func configureCommandSide(root *cobra.Command, runtime bool) {
+	remove := func(parent *cobra.Command, names ...string) {
+		for _, command := range parent.Commands() {
+			if shared.Contains(names, command.Name()) {
+				parent.RemoveCommand(command)
+			}
+		}
+	}
+	if !runtime {
+		root.Short = "Общая изолированная среда разработчика — управление на хосте"
+		remove(root, "banner", "runtime-init", "runtime-serve", "runtime-legacy-archive", "runtime-legacy-shared-archive", "runtime-legacy-import", "runtime-legacy-finish", "graphify-mcp")
+		return
+	}
+	root.Short = "Общая среда разработчика — команды внутри контейнера"
+	remove(root, "install", "bootstrap-replace-legacy", "bootstrap-apply-update", "ensure-image", "update")
+	for _, command := range root.Commands() {
+		if command.Name() == "project" {
+			for _, child := range command.Commands() {
+				if child.Name() != "list" {
+					command.RemoveCommand(child)
+				}
+			}
+			command.Short = "Подключённые репозитории"
+		}
+		if command.Name() == "workspace" {
+			for _, child := range command.Commands() {
+				if child.Name() != "map" {
+					command.RemoveCommand(child)
+				}
+			}
+			command.Short = "Карта подключённых проектов"
+		}
+		if command.Name() == "migrate" {
+			remove(command, "legacy")
+			command.Short = "Импорт авторизаций агента"
+		}
+	}
 }

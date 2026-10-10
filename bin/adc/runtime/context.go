@@ -146,6 +146,9 @@ func (a *App) FindCheckout(c shared.Config, root string) (shared.Project, error)
 }
 func (a *App) SyncProject(p shared.Project) error {
 	root := p.RuntimePath
+	if err := shared.MigrateProjectState(root); err != nil {
+		return err
+	}
 	capabilities, e := a.shared().ProjectCapabilities(p)
 	if e != nil {
 		return e
@@ -204,7 +207,7 @@ func (a *App) SyncProject(p shared.Project) error {
 		}
 	}
 	ignore := filepath.Join(root, ".gitignore")
-	patterns := []string{"/.ai-devcontainer/", "/AGENTS.platform.md", "/AGENTS.skills.md", "/.claude/skills/", "/.dsh/skills/", "/.mcp.json", "/.agents/mcp.local.json", "/.agents/mcp.secrets.env"}
+	patterns := []string{"/.adc/", "/.ai-devcontainer/", "/AGENTS.platform.md", "/AGENTS.skills.md", "/.claude/skills/", "/.dsh/skills/", "/.mcp.json", "/.agents/mcp.local.json", "/.agents/mcp.secrets.env"}
 	if shared.Contains(capabilities, "graphify") {
 		patterns = append(patterns, "/graphify-out/", "/.graphify-cache/", "/.graphify_cache/")
 	}

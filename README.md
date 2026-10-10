@@ -102,6 +102,8 @@ adc mcp enable obsidian --project
 | Проверить состояние среды | `adc workspace status` |
 | Остановить среду с сохранением данных | `adc workspace stop` |
 | Проверить установку | `adc doctor` |
+| Проверить проект и ссылки без изменений | `adc doctor project frontend` или `adc doctor project /path/to/repo` |
+| Узнать установленную ревизию | `adc --version` |
 | Открыть справку по задачам Orca | `adc task --help` |
 | Открыть справку по координации агентов | `adc orca orchestration --help` |
 | Запустить панель OmniRoute | `adc omniroute serve` → http://localhost:20128 |

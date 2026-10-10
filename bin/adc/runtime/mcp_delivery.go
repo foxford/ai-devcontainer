@@ -38,8 +38,11 @@ func (a *App) ensureProjectSecrets(root string) error {
 	return secureWrite(path, data)
 }
 func readMCPState(root string) (mcpState, bool, error) {
+	if err := shared.MigrateProjectState(root); err != nil {
+		return mcpState{}, false, err
+	}
 	state := mcpState{Version: 1, Servers: []string{}}
-	data, err := os.ReadFile(filepath.Join(root, ".ai-devcontainer", "mcp-state.json"))
+	data, err := os.ReadFile(filepath.Join(root, shared.ProjectStateDir, "mcp-state.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &state); err != nil {
 			return state, false, err
@@ -53,7 +56,7 @@ func readMCPState(root string) (mcpState, bool, error) {
 		return state, false, err
 	}
 	// Preserve ownership and stale names from the previous delivery engine.
-	data, err = os.ReadFile(filepath.Join(root, ".ai-devcontainer", "mcp-state"))
+	data, err = os.ReadFile(filepath.Join(root, shared.ProjectStateDir, "mcp-state"))
 	if err == nil {
 		state.Servers = strings.Fields(string(data))
 		state.ClaudeOwned = true
@@ -392,7 +395,7 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	if err != nil {
 		return err
 	}
-	statePath := filepath.Join(p.RuntimePath, ".ai-devcontainer", "mcp-state.json")
+	statePath := filepath.Join(p.RuntimePath, shared.ProjectStateDir, "mcp-state.json")
 	if err := secureWrite(statePath, append(checkpoint, '\n')); err != nil {
 		return err
 	}

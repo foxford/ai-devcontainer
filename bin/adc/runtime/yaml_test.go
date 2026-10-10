@@ -52,7 +52,7 @@ func TestOrcaSetupPreservesProjectAndIsIdempotent(t *testing.T) {
 	if config.SetupAgentStartupPolicy != "wait-for-setup" || !reflect.DeepEqual(config.Worktree.SharedDirectories, []string{"node_modules"}) {
 		t.Fatalf("unexpected Orca config: %#v", config)
 	}
-	backup := filepath.Join(root, ".ai-devcontainer", "backups", "orca.yaml")
+	backup := filepath.Join(root, shared.ProjectStateDir, "backups", "orca.yaml")
 	if readFixture(t, backup) != original {
 		t.Fatal("original config not backed up exactly")
 	}
@@ -84,7 +84,7 @@ func TestOrcaRejectsInvalidConfigWithoutWriting(t *testing.T) {
 			if readFixture(t, path) != data {
 				t.Fatal("invalid original config changed")
 			}
-			if _, err := os.Stat(filepath.Join(root, ".ai-devcontainer", "backups", "orca.yaml")); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(root, shared.ProjectStateDir, "backups", "orca.yaml")); !os.IsNotExist(err) {
 				t.Fatal("backup created for a rejected update")
 			}
 		})

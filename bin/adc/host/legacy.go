@@ -265,6 +265,10 @@ func legacyResourceMount(r legacy.Resource) (string, error) {
 }
 
 func (a *App) LegacyBackup(planFile, output string) error {
+	return a.legacySnapshot(planFile, output, false)
+}
+
+func (a *App) legacySnapshot(planFile, output string, profilesOnly bool) error {
 	if err := a.shared().RequireHost(); err != nil {
 		return err
 	}
@@ -278,6 +282,10 @@ func (a *App) LegacyBackup(planFile, output string) error {
 	if err := stoppedLegacy(p); err != nil {
 		return err
 	}
+	sourcePlan := p
+	if profilesOnly {
+		p = legacyProfilePlan(p)
+	}
 	out, err := filepath.Abs(output)
 	if err != nil {
 		return err
@@ -287,7 +295,7 @@ func (a *App) LegacyBackup(planFile, output string) error {
 		return err
 	}
 	out = filepath.Join(parent, filepath.Base(out))
-	for _, r := range p.Resources {
+	for _, r := range sourcePlan.Resources {
 		source := r.Source
 		if r.Type == "bind" {
 			if resolved, err := shared.Abs(source); err == nil {
@@ -305,6 +313,9 @@ func (a *App) LegacyBackup(planFile, output string) error {
 		return fmt.Errorf("нужен новый каталог backup: %w", err)
 	}
 	b := legacy.Backup{Version: legacy.Version, Created: time.Now().UTC().Format(time.RFC3339), Plan: p, Archives: map[string]legacy.Archive{}}
+	if profilesOnly {
+		b.Scope = legacy.MountedProfiles
+	}
 	for _, r := range p.Resources {
 		if r.Type == "volume" {
 			if _, err := shared.Output("", "docker", "volume", "inspect", "--format", "{{.Name}}", r.Source); err != nil {
@@ -316,19 +327,25 @@ func (a *App) LegacyBackup(planFile, output string) error {
 			return err
 		}
 		fmt.Println("Backup:", r.ID, r.Type, r.Source)
-		archive, err := streamLegacyArchive(out, r.ID, []string{"run", "--rm", "--network", "none", "--read-only", "--mount", m, "-e", "ADC_RUNTIME=1", "--entrypoint", "adc", "adc-runtime:local", "runtime-legacy-archive", "/source"})
+		helper := "runtime-legacy-archive"
+		if profilesOnly && legacyToolResource(p, r.ID) {
+			helper = "runtime-legacy-shared-archive"
+		}
+		archive, err := streamLegacyArchive(out, r.ID, []string{"run", "--rm", "--network", "none", "--read-only", "--mount", m, "-e", "ADC_RUNTIME=1", "--entrypoint", "adc", "adc-runtime:local", helper, "/source"})
 		if err != nil {
 			return fmt.Errorf("неполный backup %s: %w", out, err)
 		}
 		b.Archives[r.ID] = archive
 	}
 	for _, c := range p.Containers {
-		key := "container-" + c.ID
-		archive, err := streamLegacyArchive(out, key, []string{"export", c.ID})
-		if err != nil {
-			return fmt.Errorf("неполный backup %s: %w", out, err)
+		if !profilesOnly {
+			key := "container-" + c.ID
+			archive, err := streamLegacyArchive(out, key, []string{"export", c.ID})
+			if err != nil {
+				return fmt.Errorf("неполный backup %s: %w", out, err)
+			}
+			b.Archives[key] = archive
 		}
-		b.Archives[key] = archive
 		// Keep environment, image, labels, ports and the rest of inspect in a
 		// private file. They can contain secrets and never go to stdout.
 		metadata, err := streamLegacyArchive(out, "metadata-"+c.ID, []string{"inspect", c.ID})
@@ -339,7 +356,7 @@ func (a *App) LegacyBackup(planFile, output string) error {
 	}
 	// Recheck writers after copying; an interrupted or inconsistent snapshot has
 	// no completion manifest and the importer refuses it.
-	if err := stoppedLegacy(p); err != nil {
+	if err := stoppedLegacy(sourcePlan); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(b, "", "  ")

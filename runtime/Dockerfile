@@ -4,7 +4,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY bin/ bin/
-RUN CGO_ENABLED=0 go build -trimpath -o /adc ./bin/adc
+ARG ADC_REVISION=unknown
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/foxford/ai-devcontainer/bin/adc/internal.Revision=${ADC_REVISION}" -o /adc ./bin/adc
 
 FROM node:24.18.0-bookworm-slim AS node-toolchain
 FROM debian:bookworm-slim

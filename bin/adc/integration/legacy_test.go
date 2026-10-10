@@ -30,6 +30,7 @@ func TestDockerLegacyMigration(t *testing.T) {
 	oldTools, oldDinD := name+"-old-tools", name+"-old-dind"
 	image := "adc-legacy-fixture:" + name
 	newContainer := "adc-" + name
+	profilesContainer := newContainer + "-profiles"
 	cli := filepath.Join(tmp, "adc")
 	t.Setenv("ADC_HOME", filepath.Join(tmp, "state"))
 	t.Setenv("AI_DEVCONTAINER_HOME", root)
@@ -86,10 +87,10 @@ func TestDockerLegacyMigration(t *testing.T) {
 	}
 	oldContainers := []string{name + "-app-a", name + "-app-b"}
 	t.Cleanup(func() {
-		for _, container := range append(oldContainers, newContainer) {
+		for _, container := range append(oldContainers, newContainer, profilesContainer) {
 			_, _ = execute("docker", "rm", "-f", container)
 		}
-		for _, volume := range []string{oldTools, oldDinD, newContainer + "-home", newContainer + "-tools", newContainer + "-worktrees"} {
+		for _, volume := range []string{oldTools, oldDinD, newContainer + "-home", newContainer + "-tools", newContainer + "-worktrees", profilesContainer + "-home", profilesContainer + "-tools", profilesContainer + "-worktrees"} {
 			_, _ = execute("docker", "volume", "rm", volume)
 		}
 		_, _ = execute("docker", "image", "rm", image)
@@ -277,5 +278,39 @@ func TestDockerLegacyMigration(t *testing.T) {
 	}
 	if !strings.Contains(execNode("cat", "/home/node/.adc-legacy/report.json"), "app-a:.codex/sessions/chat.jsonl") {
 		t.Fatal("history collision not reported")
+	}
+	adc("workspace", "stop")
+	// The normal host-profile route never archives code, caches or writable layers.
+	profilesState := filepath.Join(tmp, "profiles-state")
+	t.Setenv("ADC_HOME", profilesState)
+	adc("workspace", "init", name+"-profiles", "--port", freePort(), "--omniroute-port", freePort(), "--graph-port", freePort())
+	adc("migrate", "legacy", "import-host", planFile, "--account", "app-a")
+	manifests, err := filepath.Glob(filepath.Join(profilesState, "backups", "profiles", "*", "snapshot", "backup.json"))
+	if err != nil || len(manifests) != 1 {
+		t.Fatal("missing profile recovery manifest")
+	}
+	profileBackup, err := legacy.Verify(filepath.Dir(manifests[0]))
+	if err != nil || profileBackup.Scope != legacy.MountedProfiles {
+		t.Fatalf("profile backup: %v", err)
+	}
+	for _, r := range profileBackup.Plan.Resources {
+		if r.Source == state || r.Source == oldDinD || strings.HasPrefix(r.Source, filepath.Join(tmp, "app-")) {
+			t.Fatal("archived checkout, duplicated parent state or DinD")
+		}
+	}
+	for _, c := range profileBackup.Plan.Containers {
+		if _, ok := profileBackup.Archives["container-"+c.ID]; ok {
+			t.Fatal("exported a container filesystem")
+		}
+	}
+	adc("workspace", "start")
+	for file, want := range map[string]string{".codex/auth.json": "app-a-fake-auth", ".codex/sessions/app-b.jsonl": "app-b-unique", ".hermes/auth.json": "fake-shared-hermes-auth"} {
+		got := strings.TrimSpace(docker("exec", "--user", "node", profilesContainer, "cat", "/home/node/"+file))
+		if got != want {
+			t.Fatalf("host profile %s: %q", file, got)
+		}
+	}
+	if read(filepath.Join(state, "app-b", "codex", "auth.json")) != "app-b-fake-auth" {
+		t.Fatal("host import modified original account")
 	}
 }

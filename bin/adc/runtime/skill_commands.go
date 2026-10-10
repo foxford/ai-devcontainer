@@ -15,6 +15,9 @@ func (a *App) Skill(root string, args []string) error {
 	if len(args) == 0 {
 		return errors.New("adc skill --help")
 	}
+	if err := shared.MigrateProjectState(root); err != nil {
+		return err
+	}
 	layers, err := a.skills(root)
 	if err != nil {
 		return err
@@ -24,7 +27,7 @@ func (a *App) Skill(root string, args []string) error {
 		return err
 	}
 	stockRoot := a.shared().DeliveryPath(catalog.Base.Skills)
-	projectRoot, baseRoot := filepath.Join(root, ".agents", "skills"), filepath.Join(root, ".ai-devcontainer", "skills-base")
+	projectRoot, baseRoot := filepath.Join(root, ".agents", "skills"), filepath.Join(root, shared.ProjectStateDir, "skills-base")
 	switch args[0] {
 	case "list":
 		fmt.Println("Скилл\tИсточник")

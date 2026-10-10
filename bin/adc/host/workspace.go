@@ -149,7 +149,7 @@ func (a *App) EnsureImage() error {
 	if _, e := shared.Output("", "docker", "info", "--format", "{{.OSType}}"); e != nil {
 		return fmt.Errorf("Docker недоступен; adc install: %w", e)
 	}
-	return shared.Run("", "docker", "build", "--builder", "default", "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "-t", "adc-runtime:local", a.Platform)
+	return shared.Run("", "docker", "build", "--builder", "default", "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "--build-arg", "ADC_REVISION="+shared.SourceRevision(a.Platform), "-t", "adc-runtime:local", a.Platform)
 }
 func (a *App) Start(c shared.Config) error {
 	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {

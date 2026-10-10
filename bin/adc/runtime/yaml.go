@@ -21,6 +21,9 @@ func sortedKeys[T any](values map[string]T) []string {
 }
 
 func wireOrca(root string) error {
+	if err := shared.MigrateProjectState(root); err != nil {
+		return err
+	}
 	path := filepath.Join(root, "orca.yaml")
 	original, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -71,7 +74,7 @@ func wireOrca(root string) error {
 		return nil
 	}
 	if len(original) > 0 {
-		backup := filepath.Join(root, ".ai-devcontainer", "backups", "orca.yaml")
+		backup := filepath.Join(root, shared.ProjectStateDir, "backups", "orca.yaml")
 		if _, err := os.Lstat(backup); os.IsNotExist(err) {
 			if err := shared.AtomicWrite(backup, original, 0600); err != nil {
 				return err

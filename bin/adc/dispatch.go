@@ -107,6 +107,11 @@ func dispatch(args []string) error {
 			return r.Migrate(args[1:])
 		}
 		return h.Migrate(args[1:])
+	case "runtime-legacy-shared-archive":
+		if !ctx.Runtime || len(args) != 2 {
+			return errors.New("помощник архива доступен только внутри ADC")
+		}
+		return runtimecmd.LegacyArchive(args[1], os.Stdout, "share/mcp/servers.json", "share/mcp/secrets.env", "share/hermes/auth.json")
 	case "runtime-legacy-archive":
 		if !ctx.Runtime || len(args) != 2 {
 			return errors.New("помощник архива доступен только внутри ADC")

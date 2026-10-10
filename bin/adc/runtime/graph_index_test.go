@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"io"
 	"os"
 	"os/exec"
@@ -66,12 +67,12 @@ func TestGraphIndexTracksDirtyFilesDeletionAndFailures(t *testing.T) {
 	if calls != 5 {
 		t.Fatal("ignore change missed")
 	}
-	checkpoint := readFixture(t, filepath.Join(root, ".ai-devcontainer", "graphify-state.json"))
+	checkpoint := readFixture(t, filepath.Join(root, shared.ProjectStateDir, "graphify-state.json"))
 	writeFixture(t, filepath.Join(root, "main.go"), "package main\nfunc Delta() {}\n")
 	if err := EnsureGraph(root, false, func(string, string, ...string) error { return errors.New("index failed") }, io.Discard, "0.9.82"); err == nil {
 		t.Fatal("failure hidden")
 	}
-	if readFixture(t, filepath.Join(root, ".ai-devcontainer", "graphify-state.json")) != checkpoint {
+	if readFixture(t, filepath.Join(root, shared.ProjectStateDir, "graphify-state.json")) != checkpoint {
 		t.Fatal("failed index marked current")
 	}
 	ensure()
@@ -104,7 +105,7 @@ func TestGraphIndexRejectsForeignOutputAndMalformedGraph(t *testing.T) {
 	}, io.Discard); err == nil {
 		t.Fatal("invalid graph marked current")
 	}
-	if _, err := os.Stat(filepath.Join(root, ".ai-devcontainer", "graphify-state.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, shared.ProjectStateDir, "graphify-state.json")); !os.IsNotExist(err) {
 		t.Fatal("bad graph checkpoint written")
 	}
 }

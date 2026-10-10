@@ -15,6 +15,7 @@ import (
 )
 
 const Version = 1
+const MountedProfiles = "mounted-profiles"
 
 type Mount struct {
 	Type        string `json:"type"`
@@ -48,6 +49,7 @@ type Archive struct {
 }
 type Backup struct {
 	Version  int                `json:"version"`
+	Scope    string             `json:"scope,omitempty"`
 	Created  string             `json:"created"`
 	Plan     Plan               `json:"plan"`
 	Archives map[string]Archive `json:"archives"`
@@ -133,7 +135,7 @@ func Verify(dir string) (Backup, error) {
 	if err := ReadJSON(filepath.Join(dir, "backup.json"), &b); err != nil {
 		return b, err
 	}
-	if b.Version != Version {
+	if b.Version != Version || b.Scope != "" && b.Scope != MountedProfiles {
 		return b, errors.New("неподдерживаемый backup")
 	}
 	if err := b.Plan.Validate(); err != nil {
@@ -144,7 +146,9 @@ func Verify(dir string) (Backup, error) {
 		keys = append(keys, r.ID)
 	}
 	for _, c := range b.Plan.Containers {
-		keys = append(keys, "container-"+c.ID)
+		if b.Scope != MountedProfiles {
+			keys = append(keys, "container-"+c.ID)
+		}
 		keys = append(keys, "metadata-"+c.ID)
 	}
 	if len(keys) != len(b.Archives) {

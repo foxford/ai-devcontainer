@@ -124,6 +124,10 @@ func TestDockerWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 		run(project, "", "git", "init", "-q", "-b", "main")
+		if err := os.MkdirAll(filepath.Join(project, ".ai-devcontainer", "skills-base", "example"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(project, ".ai-devcontainer", "skills-base", "example", "SKILL.md"), "legacy fork base")
 		write(filepath.Join(project, "AGENTS.md"), "Keep project rules\n")
 		write(filepath.Join(project, "example.ts"), "export function authenticate(name: string) { return name.length > 0; }\nexport function login(name: string) { return authenticate(name); }\n")
 		write(filepath.Join(project, "orca.yaml"), "# team setup\nscripts:\n  setup: printf 'ADC_TEAM_SETUP_OK\\n'\n")
@@ -141,6 +145,14 @@ func TestDockerWorkspace(t *testing.T) {
 	}
 	t.Log("building and starting the real runtime")
 	adc("workspace", "start")
+	if inside, host := strings.TrimSpace(execNode("adc", "--version")), strings.TrimSpace(adc("--version")); inside != host {
+		t.Fatalf("runtime revision %q differs from host %q", inside, host)
+	}
+	for _, id := range []string{"app-a", "app-b"} {
+		project := filepath.Join(tmp, id)
+		assertContains(read(filepath.Join(project, ".adc", "skills-base", "example", "SKILL.md")), "legacy fork base")
+		assertContains(read(filepath.Join(project, ".ai-devcontainer", "skills-base", "example", "SKILL.md")), "legacy fork base")
+	}
 	execNode("bash", "-lc", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.bash_history" && node --version && go version && rustc --version && bun --version`)
 	execNode("zsh", "-lic", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.zsh_history"`)
 	var status struct {

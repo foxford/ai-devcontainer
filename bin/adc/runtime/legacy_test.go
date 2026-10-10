@@ -188,6 +188,65 @@ func TestLegacyImportPreservesBothProfilesAndResolvesHermes(t *testing.T) {
 	}
 }
 
+func TestLegacyMountedProfilesImportWithoutContainerExports(t *testing.T) {
+	dir, b := legacyFixture(t)
+	b.Scope = legacy.MountedProfiles
+	for _, c := range b.Plan.Containers {
+		archive := b.Archives["container-"+c.ID]
+		if err := os.Remove(filepath.Join(dir, archive.File)); err != nil {
+			t.Fatal(err)
+		}
+		delete(b.Archives, "container-"+c.ID)
+	}
+	saveLegacyManifest(t, dir, b)
+	home, tools := t.TempDir(), t.TempDir()
+	if err := ImportLegacy(dir, "app-a", home, tools, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFixture(t, filepath.Join(home, ".codex", "auth.json")); got != "app-a-auth" {
+		t.Fatal("lost chosen account")
+	}
+	if got := readFixture(t, filepath.Join(home, ".codex", "sessions", "app-b.jsonl")); got != "app-b-unique-session" {
+		t.Fatal("lost secondary history")
+	}
+	if _, err := legacy.Verify(dir); err != nil {
+		t.Fatal(err)
+	}
+	b.Scope = ""
+	saveLegacyManifest(t, dir, b)
+	if _, err := legacy.Verify(dir); err == nil {
+		t.Fatal("accepted incomplete full backup")
+	}
+}
+
+func TestLegacySharedArchiveSelectsSettingsInsteadOfTools(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{"share/mcp/servers.json": "{}", "share/mcp/secrets.env": "KEY=fake", "share/hermes/auth.json": "fake-auth", "bin/tool": "binary", "share/cache/large": "cache"} {
+		writeFixture(t, filepath.Join(root, filepath.FromSlash(name)), body)
+	}
+	var buf bytes.Buffer
+	if err := LegacyArchive(root, &buf, "share/mcp/servers.json", "share/mcp/secrets.env", "share/hermes/auth.json"); err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(&buf)
+	files := map[string]bool{}
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.Typeflag == tar.TypeReg {
+			files[h.Name] = true
+		}
+	}
+	if len(files) != 3 || !files["share/mcp/secrets.env"] || !files["share/hermes/auth.json"] {
+		t.Fatalf("unexpected files: %v", files)
+	}
+}
+
 func TestLegacyImportRejectsBadBackupWithoutPublishing(t *testing.T) {
 	for _, kind := range []string{"incomplete", "checksum", "traversal", "broken-hermes", "truncated-tar", "auth-link"} {
 		t.Run(kind, func(t *testing.T) {

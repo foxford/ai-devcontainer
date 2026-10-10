@@ -7,6 +7,7 @@ import (
 )
 
 func TestCommandHelpAndCompletion(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
 	for _, args := range [][]string{{"--help"}, {"project", "add", "--help"}, {"skill", "fork", "--help"}, {"mcp", "add", "--help"}, {"mcp", "list", "--help"}, {"plans", "--help"}, {"tools", "--help"}, {"tools", "graphify", "--help"}, {"tools", "install", "--help"}, {"tools", "claude-snapshot", "--help"}, {"tools", "pnpm-patch-dep", "--help"}, {"completion", "bash"}, {"completion", "zsh"}, {"completion", "fish"}, {"completion", "powershell"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var buf bytes.Buffer
@@ -34,5 +35,34 @@ func TestCommandHelpAndCompletion(t *testing.T) {
 		if e := cmd.Execute(); e == nil {
 			t.Fatalf("accepted invalid invocation %v", args)
 		}
+	}
+}
+
+func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
+	for _, side := range []string{"0", "1"} {
+		t.Run(side, func(t *testing.T) {
+			t.Setenv("ADC_RUNTIME", side)
+			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": side == "0", "ensure-image": side == "0", "project add": side == "0", "project list": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
+			for name, want := range cases {
+				cmd, rest, err := commandTree().Find(strings.Fields(name))
+				available := err == nil && len(rest) == 0 && cmd.Name() == strings.Fields(name)[len(strings.Fields(name))-1]
+				if available != want {
+					t.Fatalf("side %s command %s available=%v wanted=%v", side, name, available, want)
+				}
+			}
+			for _, candidate := range []string{"banner", "install"} {
+				var buf bytes.Buffer
+				root := commandTree()
+				root.SetOut(&buf)
+				root.SetErr(&buf)
+				root.SetArgs([]string{"__complete", candidate})
+				if err := root.Execute(); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(buf.String(), candidate+"\t") != cases[candidate] {
+					t.Fatalf("completion disagrees with availability: %s", buf.String())
+				}
+			}
+		})
 	}
 }

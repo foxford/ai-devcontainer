@@ -132,7 +132,7 @@ func TestSkillForkBaselineUnforkAndTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	project := filepath.Join(root, ".agents", "skills", "example", "SKILL.md")
-	base := filepath.Join(root, ".ai-devcontainer", "skills-base", "example", "SKILL.md")
+	base := filepath.Join(root, shared.ProjectStateDir, "skills-base", "example", "SKILL.md")
 	if readFixture(t, project) != "stock\n" || readFixture(t, base) != "stock\n" {
 		t.Fatal("fork or baseline missing")
 	}
