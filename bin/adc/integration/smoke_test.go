@@ -156,7 +156,7 @@ func TestDockerWorkspace(t *testing.T) {
 	t.Log("building and starting the real runtime")
 	adc("ensure-image")
 	// Import creates a non-empty volume with volume-nocopy before first start.
-	docker("run", "--rm", "--network", "none", "--mount", "type=volume,src="+container+"-home,dst=/home/node,volume-nocopy", "--entrypoint", "sh", "adc-runtime:local", "-c", `mkdir -p /home/node/.codex; printf 'ADC_IMPORTED_AUTH\n' > /home/node/.codex/auth.json; printf '# adc:agents:start\n. /opt/ai-devcontainer/runtime/shell-env.sh\n# adc:agents:end\n' > /home/node/.zshrc`)
+	docker("run", "--rm", "--network", "none", "--mount", "type=volume,src="+container+"-home,dst=/home/node,volume-nocopy", "--entrypoint", "sh", "adc-runtime:local", "-c", `mkdir -p /home/node/.codex; printf 'ADC_IMPORTED_AUTH\n' > /home/node/.codex/auth.json; printf '# Installer settings must survive\nexport PATH="$HOME/.local/bin:$PATH"\n# adc:agents:start\n. /opt/ai-devcontainer/runtime/shell-env.sh\n# adc:agents:end\n' > /home/node/.zshrc`)
 	startup := adc("workspace", "start")
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
@@ -176,10 +176,21 @@ func TestDockerWorkspace(t *testing.T) {
 	execNode("bash", "-lc", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.bash_history" && node --version && go version && rustc --version && bun --version`)
 	execNode("zsh", "-lic", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.zsh_history"`)
 	assertContains(execNode("cat", "/home/node/.codex/auth.json"), "ADC_IMPORTED_AUTH")
-	zsh := docker("exec", "-t", "--user", "node", "--workdir", filepath.Join(tmp, "app-a"), container, "zsh", "-ic", `(( $+functions[omz] )) || exit 1; print -r -- "ADC_PROMPT=$PS1"`)
+	zsh := docker("exec", "-t", "--user", "node", "--workdir", filepath.Join(tmp, "app-a"), container, "zsh", "-ic", `(( $+functions[omz] && $+functions[p10k] )) || exit 1; [[ "$ZSH_THEME" == powerlevel10k/powerlevel10k ]] || exit 1; print -r -- "ADC_PROMPT=$PS1"`)
 	assertContains(zsh, "ADC · "+name)
 	assertContains(zsh, "ADC_PROJECT_BANNER_OK")
 	assertContains(zsh, "["+name+"]")
+	assertContains(execNode("cat", "/home/node/.zshrc"), "# Installer settings must survive")
+	// A later user-defined prompt takes precedence over the ADC defaults.
+	execNode("sh", "-c", `printf 'PROMPT="ADC_PERSONAL_PROMPT "\n' > "$HOME/.zshrc"`)
+	docker("rm", "-f", container)
+	adc("workspace", "start")
+	custom := execNode("zsh", "-ic", `(( ! $+functions[omz] )) || exit 1; print -r -- "$PS1"`)
+	assertContains(custom, "ADC_PERSONAL_PROMPT")
+	// Restore the vendor-only profile and rerun initialization for the rest of the smoke.
+	execNode("sh", "-c", `printf '# Installer settings must survive\nexport PATH="$HOME/.local/bin:$PATH"\n' > "$HOME/.zshrc"`)
+	docker("rm", "-f", container)
+	adc("workspace", "start")
 	var status struct {
 		Result struct{ Runtime struct{ Reachable bool } }
 	}

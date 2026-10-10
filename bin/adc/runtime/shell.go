@@ -52,7 +52,18 @@ func initializeShells(home, seed string) error {
 		}
 		body := ". /opt/ai-devcontainer/runtime/shell-env.sh\n"
 		if file == ".zshrc" {
-			body += `setopt INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+			// Vendor installers can add PATH lines before the first runtime start.
+			// Such profiles must be preserved but still need the default theme.
+			body += `if (( ! $+functions[omz] )) && [[ "$PS1" == '%m%# ' ]]; then
+  export ZSH="${ZSH:-$HOME/.oh-my-zsh}"
+  (( $+ZSH_THEME )) || ZSH_THEME="powerlevel10k/powerlevel10k"
+  (( $+plugins )) || plugins=(git docker npm zsh-autosuggestions zsh-completions)
+  (( $+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS )) || POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(user dir vcs status)
+  (( $+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS )) || POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=()
+  : "${POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD:=true}"
+  if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then source "$ZSH/oh-my-zsh.sh"; fi
+fi
+setopt INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
 case "$PS1" in *"[${ADC_WORKSPACE}]"*) ;; *)
   PS1="%F{cyan}[${ADC_WORKSPACE}]%f $PS1" ;;
 esac
