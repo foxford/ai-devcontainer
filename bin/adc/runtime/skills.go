@@ -63,12 +63,16 @@ func (a *App) skills(root string, selected ...[]string) (map[string]skillLayers,
 			return nil, err
 		}
 		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".") {
+			if strings.HasPrefix(entry.Name(), ".") || entry.Name() == "README.md" {
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
 			info, err := os.Stat(path)
 			if err != nil {
+				if index == 1 && os.IsNotExist(err) && entry.Type()&os.ModeSymlink != 0 {
+					fmt.Fprintln(os.Stderr, "Скилл пропущен: отсутствует цель ссылки", path)
+					continue
+				}
 				return nil, err
 			}
 			if !info.IsDir() {
@@ -183,6 +187,15 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 	var index strings.Builder
 	index.WriteString(shared.Marker + "# Скиллы проекта\n\nПлатформенные скиллы дополняются файлами из `.agents/skills/`. Проектный файл перекрывает платформенный. Читай собранный SKILL.md из `.claude/skills/`; код скопирован, чтобы относительные импорты учитывали форки.\n\n| Скилл | Источник | Описание |\n|---|---|---|\n")
 	for _, name := range skillNames(layers) {
+		target := filepath.Join(dest, name)
+		if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink == 0 {
+			if _, err := os.Stat(filepath.Join(target, skillMarker)); err != nil {
+				fmt.Fprintln(os.Stderr, "Скилл сохранён без изменений:", target, "; для управляемого форка используйте .agents/skills")
+				fmt.Fprintf(&index, "| [%s](.claude/skills/%s/SKILL.md) | пользовательский каталог | Сохранён без изменений; платформенная версия не доставлена |\n", name, name)
+				live[name] = true
+				continue
+			}
+		}
 		layer := layers[name]
 		stock, err := skillFiles(layer.stock)
 		if err != nil {
@@ -202,14 +215,6 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 		if _, ok := merged["SKILL.md"]; !ok {
 			fmt.Fprintln(os.Stderr, "скилл без SKILL.md:", name)
 			continue
-		}
-		target := filepath.Join(dest, name)
-		if info, err := os.Lstat(target); err == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
-				if _, err := os.Stat(filepath.Join(target, skillMarker)); err != nil {
-					return fmt.Errorf("%s принадлежит проекту; перенесите скилл в .agents/skills", target)
-				}
-			}
 		}
 		staging, err := os.MkdirTemp(dest, ".adc-skill-")
 		if err != nil {

@@ -135,6 +135,16 @@ func TestDockerWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 		write(filepath.Join(project, ".agents", "motd.sh"), "printf 'ADC_PROJECT_BANNER_OK\\n'\n")
+		if err := os.MkdirAll(filepath.Join(project, ".agents", "skills"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("/opt/dev-platform/docs/skills-README.md", filepath.Join(project, ".agents", "skills", "README.md")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(project, ".claude", "skills", "mermaid-diagrams"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(project, ".claude", "skills", "mermaid-diagrams", "SKILL.md"), "ADC_USER_SKILL_PRESERVED\n")
 		run(project, "", "git", "add", "AGENTS.md", "orca.yaml", ".agents/motd.sh", "example.ts")
 		run(project, "", "git", "-c", "user.name=ADC-Smoke", "-c", "user.email=adc-smoke@example.invalid", "commit", "-qm", "fixture")
 		args := []string{"project", "add", project, "--id", id}
@@ -148,6 +158,10 @@ func TestDockerWorkspace(t *testing.T) {
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
 	assertContains(adc("workspace", "status"), "running (готов)")
+	for _, id := range []string{"app-a", "app-b"} {
+		assertContains(read(filepath.Join(tmp, id, ".claude", "skills", "mermaid-diagrams", "SKILL.md")), "ADC_USER_SKILL_PRESERVED")
+		execNode("test", "-f", filepath.Join(tmp, id, ".agents", "skills", "README.md"))
+	}
 	if inside, host := strings.TrimSpace(execNode("adc", "--version")), strings.TrimSpace(adc("--version")); inside != host {
 		t.Fatalf("runtime revision %q differs from host %q", inside, host)
 	}
@@ -177,6 +191,36 @@ func TestDockerWorkspace(t *testing.T) {
 			Worktrees []struct{ Path, DisplayName string }
 		}
 	}
+	t.Log("checking that a project delivery error keeps Orca running")
+	contract := filepath.Join(tmp, "app-a", "AGENTS.platform.md")
+	originalContract := read(contract)
+	write(contract, "ADC_UNMANAGED_PROJECT_RULES\n")
+	docker("rm", "-f", container)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	start := exec.CommandContext(ctx, cli, "workspace", "start")
+	start.Dir = root
+	failedOutput, startErr := start.CombinedOutput()
+	cancel()
+	if startErr == nil {
+		t.Fatal("project delivery error was hidden")
+	}
+	assertContains(string(failedOutput), "app-a")
+	assertContains(string(failedOutput), "AGENTS.platform.md принадлежит проекту")
+	assertContains(adc("workspace", "status"), "ошибка подготовки")
+	decode(t, adc("orca", "status", "--json"), &status)
+	if !status.Result.Runtime.Reachable {
+		t.Fatal("project error stopped Orca")
+	}
+	if strings.TrimSpace(docker("inspect", "--format", "{{.State.Status}} {{.RestartCount}}", container)) != "running 0" {
+		t.Fatal("project failure restarted the runtime")
+	}
+	if read(contract) != "ADC_UNMANAGED_PROJECT_RULES\n" {
+		t.Fatal("unmanaged project contract overwritten")
+	}
+	write(contract, originalContract)
+	adc("workspace", "stop")
+	adc("workspace", "start")
+	assertContains(adc("workspace", "status"), "running (готов)")
 	decode(t, adc("orca", "worktree", "list", "--json"), &trees)
 	worktree := ""
 	for _, tree := range trees.Result.Worktrees {

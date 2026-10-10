@@ -80,6 +80,11 @@ func (a *App) WriteMap(c shared.Config) error {
 	}
 	return nil
 }
+
+type projectSyncError struct{ error }
+
+func (e *projectSyncError) Unwrap() error { return e.error }
+
 func (a *App) Sync(args []string) error {
 
 	return a.shared().Locked(func() error {
@@ -129,7 +134,10 @@ func (a *App) Sync(args []string) error {
 				fmt.Println(p.ID, "OK")
 			}
 		}
-		return errors.Join(failures...)
+		if len(failures) > 0 {
+			return &projectSyncError{errors.Join(failures...)}
+		}
+		return nil
 	})
 }
 func (a *App) FindCheckout(c shared.Config, root string) (shared.Project, error) {
@@ -349,8 +357,10 @@ func (a *App) Init() error {
 			return e
 		}
 	}
-	if e = a.Sync([]string{"--all"}); e != nil {
-		return e
+	syncErr := a.Sync([]string{"--all"})
+	var projects *projectSyncError
+	if syncErr != nil && !errors.As(syncErr, &projects) {
+		return syncErr
 	}
 	// Public CLI only; errors stay visible. No direct writes into Orca's database.
 	for _, p := range c.Projects {
@@ -358,6 +368,9 @@ func (a *App) Init() error {
 		if e = shared.Run("", "orca", "repo", "add", "--path", p.RuntimePath, "--json"); e != nil {
 			return e
 		}
+	}
+	if syncErr != nil {
+		return syncErr
 	}
 	return shared.AtomicWrite("/tmp/adc-ready", []byte("ready\n"), 0644)
 }

@@ -79,17 +79,30 @@ func (a *App) Serve() (result error) {
 	case err := <-done:
 		return stoppedOrca(err)
 	case err := <-initDone:
-		if err != nil {
+		if err := publishInitialization(err); err != nil {
 			return err
 		}
 	}
-	shared.StartupFinished(nil)
 	select {
 	case <-ctx.Done():
 		return nil
 	case err := <-done:
 		return stoppedOrca(err)
 	}
+}
+
+func publishInitialization(err error) error {
+	if err == nil {
+		shared.StartupFinished(nil)
+		return nil
+	}
+	var projects *projectSyncError
+	if !errors.As(err, &projects) {
+		return err
+	}
+	shared.StartupFinished(err)
+	fmt.Fprintln(os.Stderr, "Orca продолжает работу. Исправьте указанные проекты и повторите adc sync; после исправления перезапустите workspace для полной проверки готовности.")
+	return nil
 }
 
 func stoppedOrca(err error) error {

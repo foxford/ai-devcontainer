@@ -57,6 +57,61 @@ func TestDocumentSelectionAndOwnership(t *testing.T) {
 	}
 }
 
+func TestLegacySkillReadmeAndForeignSkillDoNotBlockDelivery(t *testing.T) {
+	requireSymlinks(t)
+	a := &App{Platform: testutil.Delivery(t), Runtime: true}
+	root := t.TempDir()
+	stock := a.shared().DeliveryPath("skills/example")
+	writeFixture(t, filepath.Join(stock, "SKILL.md"), "platform instructions\n")
+	readme := filepath.Join(root, ".agents", "skills", "README.md")
+	if err := os.MkdirAll(filepath.Dir(readme), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/opt/dev-platform/docs/skills-README.md", readme); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(root, ".claude", "skills", "example")
+	writeFixture(t, filepath.Join(foreign, "SKILL.md"), "my custom instructions\n")
+	writeFixture(t, filepath.Join(foreign, "scripts", "personal.py"), "my custom code\n")
+	before, err := shared.TreeDigest(foreign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := a.DeliverSkills(root); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.DeliverDocuments(shared.Project{RuntimePath: root}); err != nil {
+			t.Fatal(err)
+		}
+		after, err := shared.TreeDigest(foreign)
+		if err != nil || before != after {
+			t.Fatal("foreign skill modified")
+		}
+		if readFixture(t, readme) != readFixture(t, a.shared().DeliveryPath("documents/skills/README.md")) {
+			t.Fatal("legacy README not repaired")
+		}
+		if !strings.Contains(readFixture(t, filepath.Join(root, "AGENTS.skills.md")), "пользовательский каталог") {
+			t.Fatal("foreign skill not identified in index")
+		}
+	}
+	// A similarly named document outside the known platform roots is retained.
+	if err := os.Remove(readme); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "docs", "skills-README.md")
+	writeFixture(t, outside, "team documentation\n")
+	if err := os.Symlink(outside, readme); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeliverDocuments(shared.Project{RuntimePath: root}); err != nil {
+		t.Fatal(err)
+	}
+	if link, err := os.Readlink(readme); err != nil || link != outside {
+		t.Fatal("foreign README link replaced")
+	}
+}
+
 func TestSkillOverlayCopiesCodeAndLinksProse(t *testing.T) {
 	requireSymlinks(t)
 	a := &App{Platform: testutil.Delivery(t), Runtime: true}

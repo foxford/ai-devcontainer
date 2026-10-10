@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
 )
 
@@ -44,6 +46,38 @@ func TestRuntimeReadinessLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestProjectSyncFailureIsPublishedWithoutStoppingOrca(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		err   error
+		state string
+		fatal bool
+	}{
+		{"ready", nil, "ready", false},
+		{"project", &projectSyncError{errors.New("app-a: retained user rules")}, "failed", false},
+		{"global", errors.New("missing tool"), "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "startup.json")
+			t.Setenv("ADC_STARTUP_STATUS", file)
+			if err := publishInitialization(tc.err); (err != nil) != tc.fatal {
+				t.Fatal("wrong lifecycle decision", err)
+			}
+			if tc.fatal {
+				return
+			}
+			data, err := os.ReadFile(file)
+			var state shared.StartupStatus
+			if err != nil || json.Unmarshal(data, &state) != nil || state.State != tc.state {
+				t.Fatal("startup outcome missing", string(data), err)
+			}
+			if tc.err != nil && state.Stage != tc.err.Error() {
+				t.Fatal("project error lost")
+			}
+		})
+	}
 }
 
 func TestBannerFindsNearestWorktreeAndRunsProjectHook(t *testing.T) {

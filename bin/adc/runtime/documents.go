@@ -22,6 +22,33 @@ func ownedDocument(path, source string) bool {
 	return bytes.Contains(first, []byte("ai-devcontainer:generated"))
 }
 
+func (a *App) ownedDeliveryDocument(path string, doc shared.DeliveryDocument) bool {
+	if ownedDocument(path, a.shared().DeliveryPath(doc.Source)) {
+		return true
+	}
+	link, err := os.Readlink(path)
+	if err != nil {
+		return false
+	}
+	if !filepath.IsAbs(link) {
+		link = filepath.Join(filepath.Dir(path), link)
+	}
+	legacy := map[string][]string{
+		".agents/skills/README.md":        {"docs/skills-README.md", "delivery/documents/skills-README.md"},
+		"plans/README.md":                 {"docs/plans-README.md", "delivery/documents/plans-README.md"},
+		"MONOREPO.md":                     {"docs/MONOREPO.md", "delivery/documents/MONOREPO.md"},
+		".agents/mcp.secrets.env.example": {"docs/mcp-secrets.example"},
+	}
+	for _, root := range []string{a.Platform, "/opt/ai-devcontainer", "/opt/dev-platform"} {
+		for _, rel := range legacy[doc.Target] {
+			if filepath.Clean(link) == filepath.Join(root, filepath.FromSlash(rel)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (a *App) documents(capabilities []string) ([]shared.DeliveryDocument, error) {
 	catalog, err := a.shared().DeliveryCatalog()
 	if err != nil {
@@ -65,8 +92,8 @@ func (a *App) DeliverDocuments(p shared.Project) error {
 	}
 	for _, capability := range catalog.Capabilities {
 		for _, doc := range capability.Documents {
-			path, source := filepath.Join(p.RuntimePath, doc.Target), a.shared().DeliveryPath(doc.Source)
-			if !active[doc.Target] && ownedDocument(path, source) {
+			path := filepath.Join(p.RuntimePath, doc.Target)
+			if !active[doc.Target] && a.ownedDeliveryDocument(path, doc) {
 				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 					return err
 				}
@@ -78,7 +105,7 @@ func (a *App) DeliverDocuments(p shared.Project) error {
 			continue
 		} // Composed by SyncProject.
 		path, source := filepath.Join(p.RuntimePath, doc.Target), a.shared().DeliveryPath(doc.Source)
-		if _, err := os.Lstat(path); err == nil && !ownedDocument(path, source) {
+		if _, err := os.Lstat(path); err == nil && !a.ownedDeliveryDocument(path, doc) {
 			continue
 		}
 		if doc.Mode == "copy" {
