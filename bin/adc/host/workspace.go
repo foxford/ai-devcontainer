@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func (a *App) Workspace(args []string) error {
@@ -82,7 +82,12 @@ func (a *App) Workspace(args []string) error {
 		if e = a.shared().RequireHost(); e != nil {
 			return e
 		}
-		return shared.Run("", "docker", "inspect", "--format", "{{.State.Status}}", a.shared().Container(c))
+		state, err := dockerStartup(context.Background(), a.shared().Container(c))
+		if err != nil {
+			return err
+		}
+		fmt.Println(startupSummary(state))
+		return nil
 	case "logs":
 		if e = a.shared().RequireHost(); e != nil {
 			return e
@@ -190,18 +195,7 @@ func (a *App) Start(c shared.Config) error {
 			return e
 		}
 	}
-	fmt.Println("Ожидание доставки контекста и Orca...")
-	for deadline := time.Now().Add(10 * time.Minute); time.Now().Before(deadline); time.Sleep(time.Second) {
-		if _, e = shared.Output("", "docker", "exec", a.shared().Container(c), "test", "-f", "/tmp/adc-ready"); e == nil {
-			fmt.Printf("Workspace запущен: Orca → Add Server → 127.0.0.1:%d. Pairing: adc orca pairing --help или adc workspace logs\n", c.Port)
-			return nil
-		}
-		status, e = shared.Output("", "docker", "inspect", "--format", "{{.State.Status}}", a.shared().Container(c))
-		if e != nil || status != "running" {
-			return fmt.Errorf("runtime не запущен; adc workspace logs: %s", status)
-		}
-	}
-	return errors.New("runtime ещё не готов; adc workspace logs")
+	return a.waitForWorkspace(c)
 }
 func (a *App) Exec(dir string, argv []string, tty bool) error {
 	if e := a.shared().RequireHost(); e != nil {

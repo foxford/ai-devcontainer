@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
@@ -49,7 +50,7 @@ func toolsHome() string {
 func installerEnv(home, tools string) []string {
 	// Detection must see actual CLIs, never ADC's agent adapters.
 	path := strings.Join([]string{filepath.Join(tools, "bin"), filepath.Join(home, ".local", "bin"), filepath.Join(home, ".opencode", "bin"), "/usr/local/bin", "/usr/sbin", "/usr/bin", "/bin", "/usr/local/cargo/bin", "/usr/local/bun/bin"}, string(os.PathListSeparator))
-	return replaceEnv(os.Environ(), map[string]string{"ADC_DELIVERY": "1", "PATH": path, "NPM_CONFIG_PREFIX": tools, "UV_INSTALL_DIR": filepath.Join(tools, "bin"), "INSTALLER_NO_MODIFY_PATH": "1", "GRAPHIFY_NO_AUTO_REFRESH": "1", "GRAPHIFY_NO_TIPS": "1", "UV_TOOL_BIN_DIR": filepath.Join(tools, "bin"), "UV_TOOL_DIR": filepath.Join(tools, "uv-tools")})
+	return replaceEnv(os.Environ(), map[string]string{"ADC_DELIVERY": "1", "PATH": path, "NPM_CONFIG_PREFIX": tools, "NPM_CONFIG_FETCH_RETRIES": "4", "NPM_CONFIG_FETCH_RETRY_FACTOR": "2", "NPM_CONFIG_FETCH_RETRY_MINTIMEOUT": "1000", "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT": "8000", "UV_HTTP_RETRIES": "4", "UV_INSTALL_DIR": filepath.Join(tools, "bin"), "INSTALLER_NO_MODIFY_PATH": "1", "GRAPHIFY_NO_AUTO_REFRESH": "1", "GRAPHIFY_NO_TIPS": "1", "UV_TOOL_BIN_DIR": filepath.Join(tools, "bin"), "UV_TOOL_DIR": filepath.Join(tools, "uv-tools")})
 }
 
 func findExecutable(name string, env []string) (string, error) {
@@ -75,24 +76,59 @@ func findExecutable(name string, env []string) (string, error) {
 }
 
 func fetchTool(url string) ([]byte, error) {
+	return downloadTool(context.Background(), &http.Client{Timeout: 5 * time.Minute}, url, waitNetworkRetry)
+}
+
+func downloadTool(ctx context.Context, client *http.Client, url string, wait func(context.Context, time.Duration) error) ([]byte, error) {
 	if !strings.HasPrefix(url, "https://") {
 		return nil, errors.New("установка требует HTTPS")
 	}
-	client := &http.Client{Timeout: 5 * time.Minute}
-	response, err := client.Get(url)
+	var data []byte
+	err := retryNetwork(ctx, "Скачивание "+url, func() error {
+		shared.StartupProgress("Скачивание " + url)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			return downloadStatusError{response.StatusCode}
+		}
+		const limit = 256 << 20
+		data, err = io.ReadAll(io.LimitReader(response.Body, limit+1))
+		if len(data) > limit {
+			return errors.New("артефакт слишком большой")
+		}
+		return err
+	}, wait)
 	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: HTTP %d", url, response.StatusCode)
-	}
-	const limit = 256 << 20
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if len(data) > limit {
-		return nil, errors.New("артефакт слишком большой")
+		return nil, fmt.Errorf("%s: %w", url, err)
 	}
 	return data, err
+}
+
+type installOutputTail struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (t *installOutputTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.data = append(t.data, p...)
+	if len(t.data) > 8192 {
+		t.data = t.data[len(t.data)-8192:]
+	}
+	return len(p), nil
+}
+func (t *installOutputTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.data)
 }
 
 func (a *App) InstallTools() error {
@@ -120,13 +156,26 @@ func (a *App) newToolInstaller() (*toolInstaller, error) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, binary, args...)
-		cmd.Dir, cmd.Env = dir, environment
 		if len(args) == 1 && args[0] == "--version" {
+			cmd := exec.CommandContext(ctx, binary, args...)
+			cmd.Dir, cmd.Env = dir, environment
 			return cmd.Output()
 		}
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		return nil, cmd.Run()
+		attempt := 0
+		err = retryNetwork(ctx, name, func() error {
+			attempt++
+			shared.StartupProgress(fmt.Sprintf("%s %s (попытка %d/%d)", name, strings.Join(args, " "), attempt, networkAttempts))
+			cmd := exec.CommandContext(ctx, binary, args...)
+			cmd.Dir, cmd.Env = dir, environment
+			var tail installOutputTail
+			cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &tail), io.MultiWriter(os.Stderr, &tail)
+			err := cmd.Run()
+			if err != nil && commandNetworkError(tail.String()) {
+				return installNetworkError{err}
+			}
+			return err
+		}, waitNetworkRetry)
+		return nil, err
 	}
 	i.run = func(dir, name string, args ...string) ([]byte, error) { return run(env, dir, name, args...) }
 	return &i, nil
@@ -160,6 +209,7 @@ func (a *App) installGraphify() error {
 }
 
 func (i *toolInstaller) works(name string) bool {
+	shared.StartupProgress("Проверка " + name + " --version")
 	flag := "--version"
 	if name == "skaffold" {
 		flag = "version"
@@ -212,8 +262,10 @@ func (i *toolInstaller) install() error {
 	if err := os.MkdirAll(filepath.Join(i.tools, "bin"), 0755); err != nil {
 		return err
 	}
+	if err := i.installClaude(); err != nil {
+		return err
+	}
 	for _, tool := range []struct{ name, url, source string }{
-		{"claude", "https://claude.ai/install.sh", filepath.Join(i.home, ".local", "bin", "claude")},
 		{"opencode", "https://opencode.ai/install", filepath.Join(i.home, ".opencode", "bin", "opencode")},
 		{"hermes", "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh", filepath.Join(i.home, ".local", "bin", "hermes")},
 	} {
@@ -222,13 +274,6 @@ func (i *toolInstaller) install() error {
 			continue
 		}
 		fmt.Fprintln(i.out, "Установка", tool.name)
-		if tool.name == "claude" {
-			for _, path := range []string{tool.source, filepath.Join(i.tools, "bin", tool.name)} {
-				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-					return err
-				}
-			}
-		}
 		if tool.name == "hermes" {
 			if err := os.RemoveAll(filepath.Join(i.home, ".hermes", "hermes-agent")); err != nil {
 				return err
@@ -303,6 +348,29 @@ func (i *toolInstaller) install() error {
 		return err
 	}
 	fmt.Fprintln(i.out, "Инструменты ADC готовы")
+	return nil
+}
+
+func (i *toolInstaller) installClaude() error {
+	if i.works("claude") {
+		fmt.Fprintln(i.out, "claude уже установлен")
+		return nil
+	}
+	fmt.Fprintln(i.out, "Установка claude через npm")
+	// Replace only broken launchers; keep all agent configuration and sessions.
+	for _, file := range []string{filepath.Join(i.tools, "bin", "claude"), filepath.Join(i.home, ".local", "bin", "claude")} {
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	// The official package contains the native binary as an optional dependency.
+	// Its postinstall links that binary; no vendor curl download is needed.
+	if _, err := i.run(i.home, "npm", "install", "-g", "--include=optional", "--allow-scripts=@anthropic-ai/claude-code", "@anthropic-ai/claude-code"); err != nil {
+		return fmt.Errorf("установка Claude через npm: %w", err)
+	}
+	if !i.works("claude") {
+		return errors.New("Claude установлен, но --version не работает")
+	}
 	return nil
 }
 

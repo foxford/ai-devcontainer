@@ -10,15 +10,26 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
 
-func (a *App) Serve() error {
+func (a *App) Serve() (result error) {
 	if err := a.shared().RequireRuntime(); err != nil {
 		return err
 	}
 	if err := runtimeUser(); err != nil {
 		return err
 	}
+	if err := os.Setenv("ADC_STARTUP_STATUS", shared.StartupPath); err != nil {
+		return err
+	}
+	defer func() {
+		if result != nil {
+			shared.StartupFinished(result)
+		}
+	}()
+	shared.StartupProgress("Запуск сервера Orca")
 	if err := os.Remove("/tmp/adc-ready"); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -59,6 +70,7 @@ func (a *App) Serve() error {
 	if err := waitRuntime(ctx, done, probe, 120*time.Second); err != nil {
 		return err
 	}
+	shared.StartupProgress("Orca отвечает; подготовка среды")
 	initDone := make(chan error, 1)
 	go func() { initDone <- a.Init() }()
 	select {
@@ -71,6 +83,7 @@ func (a *App) Serve() error {
 			return err
 		}
 	}
+	shared.StartupFinished(nil)
 	select {
 	case <-ctx.Done():
 		return nil

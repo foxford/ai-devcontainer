@@ -144,7 +144,10 @@ func TestDockerWorkspace(t *testing.T) {
 		adc(args...)
 	}
 	t.Log("building and starting the real runtime")
-	adc("workspace", "start")
+	startup := adc("workspace", "start")
+	assertContains(startup, "Ctrl+C прекращает только ожидание")
+	assertContains(startup, "консоль свободна")
+	assertContains(adc("workspace", "status"), "running (готов)")
 	if inside, host := strings.TrimSpace(execNode("adc", "--version")), strings.TrimSpace(adc("--version")); inside != host {
 		t.Fatalf("runtime revision %q differs from host %q", inside, host)
 	}

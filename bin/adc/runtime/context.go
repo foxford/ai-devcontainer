@@ -117,6 +117,7 @@ func (a *App) Sync(args []string) error {
 		}
 		var failures []error
 		for _, p := range selected {
+			shared.StartupProgress("Доставка контекста: " + p.ID)
 			if p.ReadOnly {
 				fmt.Println(p.ID, "read-only: карта доступна, раздача пропущена")
 				continue
@@ -156,6 +157,7 @@ func (a *App) SyncProject(p shared.Project) error {
 	p.Capabilities = capabilities
 	// A newly selected browser capability also works in an already running workspace.
 	if os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
+		shared.StartupProgress("Проверка браузерных инструментов: " + p.ID)
 		if e = a.InstallMCPBrowsers(shared.Config{Projects: []shared.Project{p}}); e != nil {
 			return e
 		}
@@ -342,6 +344,7 @@ func (a *App) Init() error {
 		}
 	}
 	if os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
+		shared.StartupProgress("Установка браузеров выбранных MCP")
 		if e = a.InstallMCPBrowsers(c); e != nil {
 			return e
 		}
@@ -351,6 +354,7 @@ func (a *App) Init() error {
 	}
 	// Public CLI only; errors stay visible. No direct writes into Orca's database.
 	for _, p := range c.Projects {
+		shared.StartupProgress("Регистрация в Orca: " + p.ID)
 		if e = shared.Run("", "orca", "repo", "add", "--path", p.RuntimePath, "--json"); e != nil {
 			return e
 		}

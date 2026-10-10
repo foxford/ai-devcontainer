@@ -190,6 +190,42 @@ func TestLegacyCleanupRefusesWritersAndChangesBeforeRemoval(t *testing.T) {
 	}
 }
 
+func TestLegacyCleanupRejectsBackupInsideAliasedProject(t *testing.T) {
+	for _, aliasProject := range []bool{false, true} {
+		name := "backup alias"
+		if aliasProject {
+			name = "project alias"
+		}
+		t.Run(name, func(t *testing.T) {
+			a, root := cleanupFixture(t)
+			alias := filepath.Join(t.TempDir(), "project")
+			if err := os.Symlink(root, alias); err != nil {
+				t.Skipf("directory symlink unavailable: %v", err)
+			}
+			projectRoot, stateRoot := root, alias
+			if aliasProject {
+				projectRoot, stateRoot = alias, root
+			}
+			a.State = filepath.Join(stateRoot, "state")
+			plan, err := a.planLegacyCleanup(projectRoot, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := legacyPlatformDigest(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.applyLegacyCleanup(plan, func(string) error { return nil }); err == nil {
+				t.Fatal("accepted backup inside aliased project")
+			}
+			after, err := legacyPlatformDigest(root)
+			if err != nil || before != after {
+				t.Fatal("unsafe cleanup modified project")
+			}
+		})
+	}
+}
+
 func TestLegacyCleanupPreservesNewState(t *testing.T) {
 	a, root := cleanupFixture(t)
 	if err := shared.MigrateProjectState(root); err != nil {

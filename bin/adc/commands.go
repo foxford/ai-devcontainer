@@ -65,7 +65,7 @@ func commandTree() *cobra.Command {
 	init.RunE = func(c *cobra.Command, args []string) error {
 		return dispatch(append(append([]string{"workspace", "init"}, args...), "--port", strconv.Itoa(*port), "--omniroute-port", strconv.Itoa(*omniPort), "--graph-port", strconv.Itoa(*graphPort)))
 	}
-	for _, s := range []struct{ name, help string }{{"start", "Собрать и запустить среду, применить маунты"}, {"stop", "Остановить среду с сохранением данных"}, {"status", "Состояние среды"}, {"logs", "Логи сервера Orca"}, {"map", "Обновить карту проектов и знаний"}} {
+	for _, s := range []struct{ name, help string }{{"start", "Запустить среду в фоне и дождаться готовности с выводом этапов"}, {"stop", "Остановить среду с сохранением данных"}, {"status", "Состояние контейнера и готовность среды"}, {"logs", "Логи подготовки среды и сервера Orca"}, {"map", "Обновить карту проектов и знаний"}} {
 		leaf(workspace, s.name, s.help, cobra.NoArgs, "workspace", s.name)
 	}
 	leaf(workspace, "shell [project]", "Открыть терминал внутри среды", cobra.MaximumNArgs(1), "workspace", "shell")

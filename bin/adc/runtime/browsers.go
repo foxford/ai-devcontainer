@@ -63,7 +63,11 @@ func (a *App) InstallMCPBrowsers(c shared.Config) error {
 			return nil
 		}
 	}
-	if err = shared.Run("/workspace", "npx", "-y", "--package="+pin, "playwright", "install", "chromium"); err != nil {
+	installer, err := a.newToolInstaller()
+	if err != nil {
+		return err
+	}
+	if _, err = installer.run("/workspace", "npx", "-y", "--package="+pin, "playwright", "install", "chromium"); err != nil {
 		return err
 	}
 	paths, err := filepath.Glob(filepath.Join(cache, "chromium-*", "chrome-linux*", "chrome"))

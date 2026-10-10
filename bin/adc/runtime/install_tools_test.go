@@ -90,6 +90,13 @@ func TestToolInstallerRepairsBrokenAgentsAndPinsOmniRoute(t *testing.T) {
 				}
 				if name == "npm" {
 					joined := strings.Join(args, " ")
+					if strings.Contains(joined, "@anthropic-ai/claude-code") {
+						if !strings.Contains(joined, "--include=optional") || !strings.Contains(joined, "--allow-scripts=@anthropic-ai/claude-code") {
+							t.Fatal("Claude native binary or postinstall disabled", args)
+						}
+						installed["claude"] = true
+						writeFixture(t, filepath.Join(tools, "bin", "claude"), "real launcher")
+					}
 					if strings.Contains(joined, "@deepseek-ai/dsh") {
 						if optionalFails {
 							return nil, errors.New("DSH unavailable")
@@ -110,7 +117,7 @@ func TestToolInstallerRepairsBrokenAgentsAndPinsOmniRoute(t *testing.T) {
 			if err := i.install(); err != nil {
 				t.Fatal(err)
 			}
-			if len(fetches) != 2 || !version {
+			if len(fetches) != 1 || !strings.Contains(fetches[0], "hermes-agent") || !version {
 				t.Fatalf("vendor installers %v; OmniRoute installed=%v", fetches, version)
 			}
 			if readFixture(t, filepath.Join(tools, "bin", "claude")) != "real launcher" {
@@ -148,5 +155,65 @@ func TestToolPromotionPreservesPersistentSymlink(t *testing.T) {
 	}
 	if link, err := os.Readlink(filepath.Join(tools, "bin", "cli")); err != nil || link != binary {
 		t.Fatalf("symlink lost: %s %v", link, err)
+	}
+}
+
+func TestClaudeInstallerPreservesProfilesAndRequiresWorkingCLI(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		healthy, installFails, broken bool
+	}{
+		{name: "healthy native installation", healthy: true},
+		{name: "repair broken launcher"},
+		{name: "npm fails", installFails: true},
+		{name: "installed binary fails", broken: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, tools := t.TempDir(), t.TempDir()
+			profiles := []string{".claude.json", ".claude/settings.json", ".claude/projects/repo/session.jsonl"}
+			for _, file := range profiles {
+				writeFixture(t, filepath.Join(home, file), "keep existing profile")
+			}
+			launcher := filepath.Join(tools, "bin", "claude")
+			writeFixture(t, launcher, "original launcher")
+			writeFixture(t, filepath.Join(home, ".local", "bin", "claude"), "original native launcher")
+			working, installs := tc.healthy, 0
+			i := toolInstaller{home: home, tools: tools, out: io.Discard}
+			i.fetch = func(string) ([]byte, error) { t.Fatal("downloaded vendor installer"); return nil, nil }
+			i.run = func(dir, name string, args ...string) ([]byte, error) {
+				if name == "claude" {
+					if working {
+						return []byte("2.1.296 (Claude Code)\n"), nil
+					}
+					return nil, errors.New("broken binary")
+				}
+				if name != "npm" {
+					t.Fatalf("unexpected installer: %s", name)
+				}
+				installs++
+				if tc.installFails {
+					return nil, errors.New("registry unavailable")
+				}
+				working = !tc.broken
+				writeFixture(t, launcher, "npm launcher")
+				return nil, nil
+			}
+			err := i.installClaude()
+			if (err != nil) != (tc.installFails || tc.broken) {
+				t.Fatalf("unexpected outcome: %v", err)
+			}
+			if tc.healthy {
+				if installs != 0 || readFixture(t, launcher) != "original launcher" || readFixture(t, filepath.Join(home, ".local", "bin", "claude")) != "original native launcher" {
+					t.Fatal("replaced healthy installation")
+				}
+			} else if installs != 1 {
+				t.Fatalf("expected one repair, got %d", installs)
+			}
+			for _, file := range profiles {
+				if readFixture(t, filepath.Join(home, file)) != "keep existing profile" {
+					t.Fatal("modified agent profile:", file)
+				}
+			}
+		})
 	}
 }

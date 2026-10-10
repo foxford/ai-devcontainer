@@ -308,7 +308,11 @@ func (a *App) applyLegacyCleanup(plan cleanupPlan, stopped func(string) error) (
 	if err != nil {
 		return "", err
 	}
-	if overlappingLegacyPaths(plan.Root, backupRoot) {
+	projectRoot, err := shared.Abs(plan.Root)
+	if err != nil {
+		return "", err
+	}
+	if overlappingLegacyPaths(projectRoot, backupRoot) {
 		return "", errors.New("резервная копия очистки должна находиться вне проекта")
 	}
 	if err = os.MkdirAll(backupRoot, 0700); err != nil {
