@@ -105,6 +105,13 @@ func TestNetworkInstallHelperProcess(t *testing.T) {
 	if err := os.WriteFile(file, []byte(strconv.Itoa(n+1)), 0600); err != nil {
 		os.Exit(2)
 	}
+	if code := os.Getenv("ADC_RETRY_QUIET_EXIT"); code != "" && n < 2 {
+		if os.Getenv("ADC_RETRY_DIAGNOSTIC") != "" {
+			fmt.Fprintln(os.Stderr, os.Getenv("ADC_RETRY_DIAGNOSTIC"))
+		}
+		value, _ := strconv.Atoi(code)
+		os.Exit(value)
+	}
 	if os.Getenv("ADC_RETRY_PERMANENT") == "true" {
 		fmt.Fprintln(os.Stderr, "npm error EACCES permission denied")
 		os.Exit(1)
@@ -114,4 +121,47 @@ func TestNetworkInstallHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestQuietVendorDNSFailureRetriesWithoutTreatingOtherExitsAsNetwork(t *testing.T) {
+	for _, tc := range []struct {
+		name, code, diagnostic string
+		vendor                 bool
+		attempts               string
+	}{
+		{"vendor DNS", "6", "", true, "3"},
+		{"ordinary command", "6", "", false, "1"},
+		{"certificate", "60", "", true, "1"},
+		{"script error", "2", "", true, "1"},
+		{"permission diagnostic", "6", "permission denied", true, "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.Home(t)
+			file := filepath.Join(t.TempDir(), "attempts")
+			t.Setenv("ADC_RETRY_HELPER", file)
+			t.Setenv("ADC_RETRY_QUIET_EXIT", tc.code)
+			t.Setenv("ADC_RETRY_DIAGNOSTIC", tc.diagnostic)
+			t.Setenv("AI_TOOLS_HOME", t.TempDir())
+			binary, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			i, err := (&App{}).newToolInstaller()
+			if err != nil {
+				t.Fatal(err)
+			}
+			run := i.run
+			if tc.vendor {
+				run = i.runVendor
+			}
+			_, err = run(i.home, binary, "-test.run=^TestNetworkInstallHelperProcess$")
+			if (err == nil) != (tc.attempts == "3") {
+				t.Fatal("wrong install outcome", err)
+			}
+			data, readErr := os.ReadFile(file)
+			if readErr != nil || string(data) != tc.attempts {
+				t.Fatalf("attempts %q, expected %s: %v", data, tc.attempts, readErr)
+			}
+		})
+	}
 }

@@ -21,6 +21,7 @@ import (
 type toolInstaller struct {
 	home, tools, platform string
 	run                   func(dir, name string, args ...string) ([]byte, error)
+	runVendor             func(dir, name string, args ...string) ([]byte, error)
 	fetch                 func(url string) ([]byte, error)
 	out                   io.Writer
 	graphify              bool
@@ -145,7 +146,7 @@ func (a *App) newToolInstaller() (*toolInstaller, error) {
 	}
 	env := installerEnv(home, toolsHome())
 	i := toolInstaller{home: home, tools: toolsHome(), platform: a.Platform, out: os.Stdout, fetch: fetchTool}
-	run := func(environment []string, dir, name string, args ...string) ([]byte, error) {
+	run := func(environment []string, quietCurlDNS bool, dir, name string, args ...string) ([]byte, error) {
 		binary, err := findExecutable(name, environment)
 		if err != nil {
 			return nil, err
@@ -170,14 +171,15 @@ func (a *App) newToolInstaller() (*toolInstaller, error) {
 			var tail installOutputTail
 			cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &tail), io.MultiWriter(os.Stderr, &tail)
 			err := cmd.Run()
-			if err != nil && commandNetworkError(tail.String()) {
+			if err != nil && (commandNetworkError(tail.String()) || quietCurlDNS && quietCurlDNSFailure(err, tail.String())) {
 				return installNetworkError{err}
 			}
 			return err
 		}, waitNetworkRetry)
 		return nil, err
 	}
-	i.run = func(dir, name string, args ...string) ([]byte, error) { return run(env, dir, name, args...) }
+	i.run = func(dir, name string, args ...string) ([]byte, error) { return run(env, false, dir, name, args...) }
+	i.runVendor = func(dir, name string, args ...string) ([]byte, error) { return run(env, true, dir, name, args...) }
 	return &i, nil
 }
 func (a *App) installTools() error {
@@ -234,7 +236,13 @@ func (i *toolInstaller) vendor(url, shell string) error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	_, err = i.run(i.home, shell, file.Name())
+	run := i.run
+	// OpenCode's release lookup uses curl -s under set -euo pipefail.
+	// DNS failure exits with curl's code 6 but produces no diagnostic output.
+	if url == "https://opencode.ai/install" && i.runVendor != nil {
+		run = i.runVendor
+	}
+	_, err = run(i.home, shell, file.Name())
 	return err
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -90,6 +91,11 @@ func commandNetworkError(output string) bool {
 }
 
 type installNetworkError struct{ error }
+
+func quietCurlDNSFailure(err error, output string) bool {
+	var exit *exec.ExitError
+	return strings.TrimSpace(output) == "" && errors.As(err, &exit) && exit.ExitCode() == 6
+}
 
 func (e installNetworkError) Unwrap() error {
 	return e.error
