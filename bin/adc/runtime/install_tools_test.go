@@ -12,14 +12,19 @@ import (
 )
 
 func TestToolInstallerUsesRealPATH(t *testing.T) {
-	env := installerEnv("/fixture/home", "/fixture/tools")
+	root := t.TempDir()
+	home, tools := filepath.Join(root, "home"), filepath.Join(root, "tools")
+	adapter := filepath.Join(root, "adc-agents")
+	t.Setenv("PATH", adapter)
+	env := installerEnv(home, tools)
 	path := ""
 	for _, item := range env {
 		if value, ok := strings.CutPrefix(item, "PATH="); ok {
 			path = value
 		}
 	}
-	if strings.Contains(path, "adc-agents") || !strings.HasPrefix(path, "/fixture/tools/bin") {
+	entries := filepath.SplitList(path)
+	if len(entries) == 0 || entries[0] != filepath.Join(tools, "bin") || strings.Contains(path, "adc-agents") {
 		t.Fatal("adapter can be mistaken for a real CLI:", path)
 	}
 	newEnv := replaceEnv([]string{"A=old", "B=keep", "A=duplicate"}, map[string]string{"A": "new"})
