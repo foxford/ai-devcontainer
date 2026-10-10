@@ -7,7 +7,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -163,5 +165,28 @@ func TestQuietVendorDNSFailureRetriesWithoutTreatingOtherExitsAsNetwork(t *testi
 				t.Fatalf("attempts %q, expected %s: %v", data, tc.attempts, readErr)
 			}
 		})
+	}
+}
+
+func TestGitInstallerAbortsAnIdleHTTPTransfer(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	home := testutil.Home(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", server.URL+"/repo.git")
+	// Keep the test short while exercising Git's real HTTP timeout mechanism.
+	cmd.Env = replaceEnv(installerEnv(home, t.TempDir()), map[string]string{"GIT_HTTP_LOW_SPEED_TIME": "1", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": filepath.Join(home, "missing-gitconfig")})
+	output, err := cmd.CombinedOutput()
+	if err == nil || ctx.Err() != nil || !strings.Contains(strings.ToLower(string(output)), "operation too slow") || !commandNetworkError(string(output)) {
+		t.Fatalf("idle transfer not interrupted as retryable: %s; %v; context: %v", output, err, ctx.Err())
 	}
 }

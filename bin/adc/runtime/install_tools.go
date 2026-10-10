@@ -51,7 +51,7 @@ func toolsHome() string {
 func installerEnv(home, tools string) []string {
 	// Detection must see actual CLIs, never ADC's agent adapters.
 	path := strings.Join([]string{filepath.Join(tools, "bin"), filepath.Join(home, ".local", "bin"), filepath.Join(home, ".opencode", "bin"), "/usr/local/bin", "/usr/sbin", "/usr/bin", "/bin", "/usr/local/cargo/bin", "/usr/local/bun/bin"}, string(os.PathListSeparator))
-	return replaceEnv(os.Environ(), map[string]string{"ADC_DELIVERY": "1", "PATH": path, "NPM_CONFIG_PREFIX": tools, "NPM_CONFIG_FETCH_RETRIES": "4", "NPM_CONFIG_FETCH_RETRY_FACTOR": "2", "NPM_CONFIG_FETCH_RETRY_MINTIMEOUT": "1000", "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT": "8000", "UV_HTTP_RETRIES": "4", "UV_INSTALL_DIR": filepath.Join(tools, "bin"), "INSTALLER_NO_MODIFY_PATH": "1", "GRAPHIFY_NO_AUTO_REFRESH": "1", "GRAPHIFY_NO_TIPS": "1", "UV_TOOL_BIN_DIR": filepath.Join(tools, "bin"), "UV_TOOL_DIR": filepath.Join(tools, "uv-tools")})
+	return replaceEnv(os.Environ(), map[string]string{"ADC_DELIVERY": "1", "PATH": path, "NPM_CONFIG_PREFIX": tools, "NPM_CONFIG_FETCH_RETRIES": "4", "NPM_CONFIG_FETCH_RETRY_FACTOR": "2", "NPM_CONFIG_FETCH_RETRY_MINTIMEOUT": "1000", "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT": "8000", "UV_HTTP_RETRIES": "4", "GIT_HTTP_LOW_SPEED_LIMIT": "1", "GIT_HTTP_LOW_SPEED_TIME": "30", "GIT_TERMINAL_PROMPT": "0", "UV_INSTALL_DIR": filepath.Join(tools, "bin"), "INSTALLER_NO_MODIFY_PATH": "1", "GRAPHIFY_NO_AUTO_REFRESH": "1", "GRAPHIFY_NO_TIPS": "1", "UV_TOOL_BIN_DIR": filepath.Join(tools, "bin"), "UV_TOOL_DIR": filepath.Join(tools, "uv-tools")})
 }
 
 func findExecutable(name string, env []string) (string, error) {

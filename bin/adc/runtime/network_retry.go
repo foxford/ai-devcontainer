@@ -82,7 +82,7 @@ func commandNetworkError(output string) bool {
 			return false
 		}
 	}
-	for _, signature := range []string{"eai_again", "enotfound", "etimedout", "econnreset", "econnrefused", "socket hang up", "could not resolve host", "temporary failure in name resolution", "connection timed out", "connection reset by peer", "curl: (6)", "curl: (7)", "curl: (18)", "curl: (28)", "curl: (35)", "curl: (52)", "curl: (56)", "http 429", "http 502", "http 503", "http 504"} {
+	for _, signature := range []string{"eai_again", "enotfound", "etimedout", "econnreset", "econnrefused", "socket hang up", "could not resolve host", "temporary failure in name resolution", "connection timed out", "connection reset by peer", "operation too slow", "curl 92", "curl: (6)", "curl: (7)", "curl: (18)", "curl: (28)", "curl: (35)", "curl: (52)", "curl: (56)", "http 429", "http 502", "http 503", "http 504"} {
 		if strings.Contains(text, signature) {
 			return true
 		}
