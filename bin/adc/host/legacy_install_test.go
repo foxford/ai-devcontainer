@@ -269,12 +269,24 @@ func TestLegacyPlatformMountGuardResolvesHostAliases(t *testing.T) {
 	if err := checkLegacyPlatformMounts(source, []legacyInspection{container}); err != nil {
 		t.Fatal("blocked an unrelated mount")
 	}
+	// macOS TempDir may use /var while EvalSymlinks returns /private/var.
+	// Reproduce a noncanonical target on every OS with a parent symlink.
+	parentAlias := filepath.Join(root, "parent-alias")
+	if err := os.Symlink(root, parentAlias); err != nil {
+		t.Skipf("symlink privilege required: %v", err)
+	}
+	container.Mounts[0].Source = source
+	if err := checkLegacyPlatformMounts(filepath.Join(parentAlias, "platform"), []legacyInspection{container}); err == nil {
+		t.Fatal("accepted the platform with a symlink in the target's parent path")
+	}
 	alias := filepath.Join(root, "alias")
 	if err := os.Symlink(source, alias); err != nil {
 		t.Skipf("symlink privilege required: %v", err)
 	}
 	container.Mounts[0].Source = alias
-	if err := checkLegacyPlatformMounts(source, []legacyInspection{container}); err == nil {
-		t.Fatal("accepted the platform mounted via a host symlink")
+	for _, target := range []string{source, filepath.Join(parentAlias, "platform")} {
+		if err := checkLegacyPlatformMounts(target, []legacyInspection{container}); err == nil {
+			t.Fatalf("accepted the platform mounted via a host symlink with target %s", target)
+		}
 	}
 }

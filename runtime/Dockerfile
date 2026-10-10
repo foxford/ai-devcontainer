@@ -98,14 +98,19 @@ RUN rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && corepack enable
 
 USER node
 ARG ZSH_IN_DOCKER_VERSION=1.2.1
-RUN wget -O /tmp/zsh-in-docker.sh \
+RUN curl -fL --retry 5 --retry-all-errors --retry-max-time 180 \
+      --connect-timeout 20 --max-time 60 -o /tmp/zsh-in-docker.sh \
       "https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh" && \
     test -s /tmp/zsh-in-docker.sh && \
-    sh /tmp/zsh-in-docker.sh \
+    mkdir -p /tmp/adc-zsh-curl && \
+    printf '%s\n' 'fail' 'connect-timeout = 20' 'max-time = 60' \
+      > /tmp/adc-zsh-curl/.curlrc && \
+    CURL_HOME=/tmp/adc-zsh-curl sh /tmp/zsh-in-docker.sh \
       -p git -p docker -p npm \
       -p https://github.com/zsh-users/zsh-autosuggestions \
       -p https://github.com/zsh-users/zsh-completions \
-      -x && test -d /home/node/.oh-my-zsh && rm -f /tmp/zsh-in-docker.sh
+      -x && test -d /home/node/.oh-my-zsh && \
+    rm -f /tmp/zsh-in-docker.sh /tmp/adc-zsh-curl/.curlrc && rmdir /tmp/adc-zsh-curl
 RUN cat >> /home/node/.zshrc <<'RC'
 
 . /opt/ai-devcontainer/runtime/shell-env.sh

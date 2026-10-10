@@ -44,6 +44,14 @@ func legacyPlatformStopped(target string) error {
 }
 
 func checkLegacyPlatformMounts(target string, containers []legacyInspection) error {
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("не удалось определить путь платформы: %w", err)
+	}
+	target, err = filepath.EvalSymlinks(target)
+	if err != nil {
+		return fmt.Errorf("не удалось разрешить путь платформы: %w", err)
+	}
 	for _, container := range containers {
 		for _, mount := range container.Mounts {
 			source := mount.Source
