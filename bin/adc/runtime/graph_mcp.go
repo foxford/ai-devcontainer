@@ -103,7 +103,7 @@ func (a *App) GraphMCP(root string, input io.Reader, output io.Writer) error {
 			return "", err
 		}
 		if !project.ReadOnly {
-			if err = a.shared().Locked(func() error { return a.ensureGraph(root, false, io.Discard) }); err != nil {
+			if err = a.ensureGraph(root, false, io.Discard); err != nil {
 				return "", err
 			}
 		}

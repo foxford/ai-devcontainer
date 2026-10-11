@@ -86,8 +86,8 @@ type projectSyncError struct{ error }
 func (e *projectSyncError) Unwrap() error { return e.error }
 
 func (a *App) Sync(args []string) error {
-
-	return a.shared().Locked(func() error {
+	var indexed []shared.Project
+	err := a.shared().Locked(func() error {
 		c, e := a.shared().Load()
 		if e != nil {
 			return e
@@ -131,6 +131,7 @@ func (a *App) Sync(args []string) error {
 				failures = append(failures, fmt.Errorf("%s: %w", p.ID, e))
 				fmt.Fprintln(os.Stderr, p.ID, "FAILED:", e)
 			} else {
+				indexed = append(indexed, p)
 				fmt.Println(p.ID, "OK")
 			}
 		}
@@ -139,6 +140,12 @@ func (a *App) Sync(args []string) error {
 		}
 		return nil
 	})
+	// Shared agent configs are complete; expensive checkout indexing must not
+	// hold the workspace lock needed by capability, skill and MCP changes.
+	for _, p := range indexed {
+		a.syncGraph(p)
+	}
+	return err
 }
 func (a *App) FindCheckout(c shared.Config, root string) (shared.Project, error) {
 	common, e := shared.Output(root, "git", "rev-parse", "--path-format=absolute", "--git-common-dir")
@@ -234,13 +241,22 @@ func (a *App) SyncProject(p shared.Project) error {
 	if e = shared.ManagedBlock(ignore, "# adc:generated:start", "# adc:generated:end", strings.Join(patterns, "\n")); e != nil {
 		return e
 	}
-	if shared.Contains(capabilities, "graphify") && os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
-		if e = a.ensureGraph(root, false, os.Stderr); e != nil {
-			// Index failure must be visible, but must not prevent the developer's agent from starting.
-			fmt.Fprintln(os.Stderr, "Graphify:", e, "; используйте исходники и adc tools graphify index для повторной попытки")
-		}
-	}
 	return nil
+}
+
+func (a *App) syncGraph(p shared.Project) {
+	if p.ReadOnly || os.Getenv("ADC_INSTALL_AI_TOOLS") == "0" {
+		return
+	}
+	caps, err := a.shared().ProjectCapabilities(p)
+	if err != nil || !shared.Contains(caps, "graphify") {
+		return
+	}
+	shared.StartupProgress("Graphify: проверка и обновление индекса " + p.ID)
+	if err := a.ensureGraph(p.RuntimePath, false, os.Stderr); err != nil {
+		// Index failure must be visible, but must not prevent agent startup.
+		fmt.Fprintln(os.Stderr, "Graphify:", err, "; используйте исходники и adc tools graphify index для повторной попытки")
+	}
 }
 func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
 	home, _ := os.UserHomeDir()

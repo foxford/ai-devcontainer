@@ -12,9 +12,81 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
 )
+
+func TestGraphIndexLockLeavesWorkspaceAndOtherCheckoutsAvailable(t *testing.T) {
+	a := &App{State: t.TempDir()}
+	root := t.TempDir()
+	held, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- a.graphLocked(root, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	t.Cleanup(func() { close(release); <-done })
+	select {
+	case <-held:
+	case <-time.After(5 * time.Second):
+		t.Fatal("index lock did not start")
+	}
+	available := make(chan error, 1)
+	other := t.TempDir()
+	go func() {
+		available <- a.shared().Locked(func() error {
+			return a.graphLocked(other, func() error { return nil })
+		})
+	}()
+	select {
+	case err := <-available:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("indexing blocked workspace changes or another checkout")
+	}
+}
+
+func TestGraphIndexLockSerializesSameCheckout(t *testing.T) {
+	a := &App{State: t.TempDir()}
+	root := t.TempDir()
+	held, release := make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		first <- a.graphLocked(root, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	entered, second := make(chan struct{}), make(chan error, 1)
+	go func() {
+		second <- a.graphLocked(root, func() error { close(entered); return nil })
+	}()
+	select {
+	case <-entered:
+		close(release)
+		t.Fatal("concurrent index writers acquired the same checkout")
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(release)
+	for _, result := range []chan error{first, second} {
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("index lock did not release")
+		}
+	}
+}
 
 func graphRepository(t *testing.T) string {
 	t.Helper()

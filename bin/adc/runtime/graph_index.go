@@ -148,5 +148,14 @@ func (a *App) ensureGraph(root string, force bool, out io.Writer) error {
 	if len(tools) != 1 {
 		return errors.New("catalog: отсутствует поставка Graphify")
 	}
-	return EnsureGraph(root, force, graphRun, out, tools[0].Version)
+	return a.graphLocked(root, func() error {
+		return EnsureGraph(root, force, graphRun, out, tools[0].Version)
+	})
+}
+
+func (a *App) graphLocked(root string, fn func() error) error {
+	// A dedicated checkout lock serializes index writers without blocking shared
+	// agent settings or indexing in other repositories and worktrees.
+	locker := &shared.App{State: filepath.Join(a.State, "locks", "graphify-"+shared.CheckoutID(root))}
+	return locker.Locked(fn)
 }

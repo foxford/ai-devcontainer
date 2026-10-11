@@ -12,7 +12,8 @@ func (a *App) Tool(dir string, args []string) error {
 	if len(args) == 0 {
 		return errors.New("отсутствует команда runtime")
 	}
-	return a.shared().Locked(func() error {
+	var indexed *shared.Project
+	err := a.shared().Locked(func() error {
 		config, err := a.shared().Load()
 		if err != nil {
 			return err
@@ -60,8 +61,15 @@ func (a *App) Tool(dir string, args []string) error {
 			return errors.New("неизвестная команда runtime")
 		}
 		if mutates {
-			return a.SyncProject(project)
+			if err := a.SyncProject(project); err != nil {
+				return err
+			}
+			indexed = &project
 		}
 		return nil
 	})
+	if err == nil && indexed != nil {
+		a.syncGraph(*indexed)
+	}
+	return err
 }

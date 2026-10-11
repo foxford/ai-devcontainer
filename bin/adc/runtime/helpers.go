@@ -55,15 +55,13 @@ func (a *App) Helpers(dir string, args []string) error {
 			return errors.New("подключите --capability graphify для проекта")
 		}
 		if len(args) == 2 && args[1] == "index" {
-			return a.shared().Locked(func() error {
-				if err := a.installGraphify(); err != nil {
-					return err
-				}
-				return a.ensureGraph(root, true, os.Stderr)
-			})
+			if err := a.shared().Locked(func() error { return a.installGraphify() }); err != nil {
+				return err
+			}
+			return a.ensureGraph(root, true, os.Stderr)
 		}
 		if len(args) == 2 && args[1] == "label-paths" {
-			if err := a.shared().Locked(func() error { return a.ensureGraph(root, false, os.Stderr) }); err != nil {
+			if err := a.ensureGraph(root, false, os.Stderr); err != nil {
 				return err
 			}
 			return GraphLabels(root, graphRun, os.Stdout)
@@ -73,7 +71,7 @@ func (a *App) Helpers(dir string, args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := a.shared().Locked(func() error { return a.ensureGraph(root, false, os.Stderr) }); err != nil {
+			if err := a.ensureGraph(root, false, os.Stderr); err != nil {
 				return err
 			}
 			return GraphView(root, port)
