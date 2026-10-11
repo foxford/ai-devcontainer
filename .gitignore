@@ -66,6 +66,9 @@ Thumbs.db
 /.mcp.json
 /.agents/mcp.local.json
 /.agents/mcp.secrets.env
+/graphify-out/
+/.graphify-cache/
+/.graphify_cache/
 /.agents/skills/README.md
 /plans/README.md
 /.agents/mcp.secrets.env.example
