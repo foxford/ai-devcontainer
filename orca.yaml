@@ -1,0 +1,6 @@
+scripts:
+    setup: |
+        # adc:setup:start
+        adc sync "$PWD" || exit $?
+        # adc:setup:end
+setupAgentStartupPolicy: wait-for-setup

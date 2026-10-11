@@ -57,3 +57,11 @@ Docker smoke с реальными Graphify и OmniRoute: `ADC_TOOL_BUNDLES_INTE
 Источники и локальные изменения описаны в delivery/skills/README.md. Рамка платформы внутри SKILL.md между ai-devcontainer:override:start/end и description ограничивает применение. После переимпорта восстанавливай рамку; правь её, сохраняя upstream тело. Маршрут фронтенда — delivery/skills/senior-frontend/references/composition_map.md. Выбирай skill по задаче и мандату, учитывая стек затронутого репозитория.
 
 Полный текущий индекс скиллов — AGENTS.skills.md, когда он сгенерирован.
+
+<!-- adc:skills:start -->
+Скиллы и их область применения: [AGENTS.skills.md](AGENTS.skills.md).
+<!-- adc:skills:end -->
+
+<!-- adc:context:start -->
+Прочитай [контракт ADC](AGENTS.platform.md) и [все проекты](/workspace/AGENTS.workspace.md). Правила этого файла и вложенных AGENTS.md сохраняют область действия.
+<!-- adc:context:end -->
