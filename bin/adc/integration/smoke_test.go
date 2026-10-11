@@ -173,6 +173,10 @@ func TestDockerWorkspace(t *testing.T) {
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
 	assertContains(adc("workspace", "status"), "running (готов)")
+	if strings.Contains(docker("info", "--format", "{{json .SecurityOptions}}"), "name=apparmor") {
+		assertContains(docker("inspect", "--format", "{{.AppArmorProfile}}", container), "adc-runtime-")
+	}
+	assertContains(execNode("sh", "-c", "command -v bwrap && bwrap --version"), "bubblewrap")
 	// A default Docker profile denies the user namespace required by Codex bwrap.
 	execNode("unshare", "-Ur", "true")
 	for _, id := range []string{"app-a", "app-b"} {
@@ -391,7 +395,8 @@ func TestDockerWorkspace(t *testing.T) {
 		// artifact explicit so an installation failure is reported here.
 		native := "@openai/codex-linux-" + arch + "@npm:@openai/codex@0.162.1-linux-" + arch
 		execNode("npm", "install", "--prefix", codexPrefix, "--no-audit", "--no-fund", "@openai/codex@0.162.1", native)
-		execNode("mkdir", "-p", "/tmp/adc-smoke-native-codex-home")
+		codexHome := "/home/node/.cache/adc-smoke-native-codex-home"
+		execNode("mkdir", "-p", codexHome)
 		outside := "/home/node/adc-smoke-sandbox-outside"
 		execNode("sh", "-c", "printf 'ADC_UNCHANGED\\n' > "+outside)
 		script := `cat /workspace/AGENTS.md /workspace/AGENTS.workspace.md AGENTS.platform.md AGENTS.skills.md >/dev/null
@@ -402,8 +407,11 @@ if (printf 'ADC_FORBIDDEN\n' > /home/node/adc-smoke-sandbox-outside) 2>/dev/null
 fi
 echo ADC_SANDBOX_READ_WRITE_OK
 `
-		result := execNode("env", "CODEX_HOME=/tmp/adc-smoke-native-codex-home", filepath.Join(codexPrefix, "node_modules", ".bin", "codex"), "sandbox", "-P", ":workspace", "-C", filepath.Join(tmp, "app-a"), "--", "/bin/sh", "-ec", script)
+		result := execNode("env", "CODEX_HOME="+codexHome, filepath.Join(codexPrefix, "node_modules", ".bin", "codex"), "sandbox", "-P", ":workspace", "-C", filepath.Join(tmp, "app-a"), "--", "/bin/sh", "-ec", script)
 		assertContains(result, "ADC_SANDBOX_READ_WRITE_OK")
+		if strings.Contains(result, "could not find bubblewrap") || strings.Contains(result, "Refusing to create helper binaries") {
+			t.Fatalf("native Codex sandbox still warns about prerequisites: %s", result)
+		}
 		assertContains(execNode("cat", outside), "ADC_UNCHANGED")
 		assertContains(read(filepath.Join(tmp, "app-a", "adc-smoke-sandbox-inside")), "ADC_ALLOWED")
 		execNode("rm", "-f", outside, filepath.Join(tmp, "app-a", "adc-smoke-sandbox-inside"))

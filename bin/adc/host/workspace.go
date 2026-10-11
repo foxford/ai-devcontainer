@@ -178,6 +178,14 @@ func (a *App) startPreparedImage(c shared.Config) error {
 	if e != nil {
 		return e
 	}
+	profile, e := a.prepareDockerAppArmor()
+	if e != nil {
+		return fmt.Errorf("подготовка Docker AppArmor: %w", e)
+	}
+	if profile != "" {
+		// DockerArgs ends with the image. Include the profile in container-key.
+		args = append(args[:len(args)-1], "--security-opt", "apparmor="+profile, args[len(args)-1])
+	}
 	b, _ := json.Marshal(args)
 	h := sha256.Sum256(b)
 	image, e := shared.Output("", "docker", "image", "inspect", "--format", "{{.Id}}", "adc-runtime:local")

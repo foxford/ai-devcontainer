@@ -1,4 +1,4 @@
-# Docker seccomp для вложенного sandbox
+# Docker security для вложенного sandbox
 
 `seccomp.json` основан на [профиле Moby](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/seccomp/default.json), ревизия `6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef` от 2026-09-17, лицензия [Apache-2.0](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/LICENSE). Сохранены исходные default-deny, архитектуры, условия capabilities и возврат ENOSYS для clone3 без CAP_SYS_ADMIN.
 
@@ -7,3 +7,7 @@
 Профиль встроен в Go CLI, перед запуском записывается в ADC_HOME/security/seccomp-<SHA256>.json с правами 0600 и передаётся Docker через --security-opt. SHA-256 в имени включён в аргументы запуска и ключ контейнера: изменение политики приводит к пересозданию при следующем workspace start/update. Docker seccomp и sandbox Codex остаются включены; глобальные sysctl, privileged и seccomp=unconfined не используются.
 
 При обновлении основы сохраняйте источник и лицензию, две записи ADC и ограничения upstream. Go-тесты проверяют профиль и его доставку. Docker smoke проверяет unshare, а режим ADC_TOOL_BUNDLES_INTEGRATION дополнительно устанавливает поддерживаемый Codex 0.162.1 во временный prefix без аккаунтов: читает документы, пишет в проект и проверяет запрет записи в доступный по Unix правам файл вне проекта. Запросов к модели нет.
+
+`apparmor.profile` основан на [шаблоне Moby](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/apparmor/template.go) той же ревизии и лицензии Apache-2.0. Используются стандартные tunables/global, abstractions/base и ABI 3.0. `deny mount` заменён на `mount` и `pivot_root`; без host CAP_SYS_ADMIN эти операции разрешены ядром только внутри созданного user namespace. Сохранены запреты записи и доступа к чувствительным путям `/proc` и `/sys`, запреты AF_ALG/AF_VSOCK, правила сигналов runc/crun/dockerd и ptrace внутри профиля ADC.
+
+AppArmor проверяется через Docker SecurityOptions, а наличие enforce-профиля — через список профилей ядра. Политика и имя содержат хеш исходного шаблона; изменение политики входит в container-key. На локальном Linux Docker host уже установленный apparmor_parser загружает профиль через sudo при необходимости, без установки зависимостей и без изменения docker-default. Отказ загрузки не приводит к запуску unconfined. Go-тесты проверяют отсутствие загрузки без AppArmor, повторное использование enforce-профиля, восстановление после перезагрузки, отказ при ошибке и синтаксис при наличии parser. Docker smoke на AppArmor-хосте проверяет применённое имя профиля и native Codex sandbox; WSL без AppArmor не проверяет применение правил ядром.

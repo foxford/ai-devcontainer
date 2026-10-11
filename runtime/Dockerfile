@@ -16,6 +16,7 @@ RUN apt-get update && \
       ca-certificates curl wget \
       git openssh-client \
       sudo \
+      bubblewrap \
       build-essential make pkg-config \
       unzip \
       jq yq \

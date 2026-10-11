@@ -31,6 +31,13 @@ func TestCapabilityChangesPreserveSettingsAndRejectInvalidComposition(t *testing
 	if err := AtomicWrite(path, []byte(`{"capabilities":["pnpm-nx"],"custom":{"retain":true},"large":9007199254740993}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	beforeInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows reports writable files as 0666 even when created with 0600.
+	// Compare the permissions actually supported by the filesystem.
+	originalMode := beforeInfo.Mode().Perm()
 	nested := filepath.Join(root, "src")
 	if err := os.Mkdir(nested, 0755); err != nil {
 		t.Fatal(err)
@@ -50,9 +57,12 @@ func TestCapabilityChangesPreserveSettingsAndRejectInvalidComposition(t *testing
 	if strings.Join(team, ",") != "pnpm-nx,frontend" || string(settings["large"]) != "9007199254740993" || !strings.Contains(string(settings["custom"]), "true") {
 		t.Fatalf("settings lost or duplicated: %s", data)
 	}
-	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0600 {
-		t.Fatal("existing permissions changed")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != originalMode {
+		t.Fatalf("existing permissions changed: before %04o, after %04o", originalMode, info.Mode().Perm())
 	}
 	catalog, _ := a.DeliveryCatalog()
 	catalog.Capabilities["blocked"] = DeliveryCapability{Description: "test conflict", Instructions: []string{"instructions/capabilities/figma.md"}, Conflicts: []string{"frontend"}}

@@ -3,7 +3,9 @@ package host
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,6 +57,72 @@ func TestDockerSeccompProfile(t *testing.T) {
 				t.Fatalf("lost upstream restriction for %s", name)
 			}
 		}
+	}
+}
+
+func TestDockerAppArmorPreparation(t *testing.T) {
+	a := &App{State: t.TempDir()}
+	profiles := filepath.Join(t.TempDir(), "profiles")
+	loads := 0
+	load := func(path string) error {
+		loads++
+		policy, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, rule := range []string{"profile \"" + dockerAppArmorName() + "\"", "  mount,", "  pivot_root,", "deny @{PROC}/sysrq-trigger rwklx,", "deny /sys/kernel/security/** rwklx,"} {
+			if !strings.Contains(string(policy), rule) {
+				t.Fatalf("missing AppArmor rule %q", rule)
+			}
+		}
+		if strings.Contains(string(policy), "ADC_PROFILE_NAME") || strings.Contains(string(policy), "deny mount,") {
+			t.Fatal("unresolved or unusable AppArmor profile")
+		}
+		return nil
+	}
+	for _, options := range []string{`null`, `[]`, `["name=seccomp,profile=builtin","name=cgroupns"]`} {
+		name, err := a.prepareAppArmor(options, profiles, load)
+		if err != nil || name != "" || loads != 0 {
+			t.Fatalf("AppArmor disabled: %q %v loads=%d", name, err, loads)
+		}
+	}
+	options := `["name=apparmor","name=seccomp,profile=builtin"]`
+	name, err := a.prepareAppArmor(options, profiles, load)
+	if err != nil || name != dockerAppArmorName() || loads != 1 {
+		t.Fatalf("AppArmor not loaded: %q %v loads=%d", name, err, loads)
+	}
+	if err := os.WriteFile(profiles, []byte(name+" (enforce)\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.prepareAppArmor(options, profiles, load); err != nil || loads != 1 {
+		t.Fatalf("already enforced profile reloaded: %v loads=%d", err, loads)
+	}
+	// Complain mode and kernel state lost after reboot both require loading.
+	for _, contents := range []string{name + " (complain)\n", ""} {
+		if err := os.WriteFile(profiles, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		failure := errors.New("fixture denied")
+		if _, err := a.prepareAppArmor(options, profiles, func(string) error { return failure }); !errors.Is(err, failure) {
+			t.Fatalf("profile loading failure ignored: %v", err)
+		}
+	}
+	if _, err := a.prepareAppArmor("invalid JSON", profiles, load); err == nil {
+		t.Fatal("invalid Docker security information ignored")
+	}
+}
+
+func TestDockerAppArmorSyntax(t *testing.T) {
+	parser, err := exec.LookPath("apparmor_parser")
+	if err != nil {
+		t.Skip("AppArmor parser is unavailable on this host")
+	}
+	path := filepath.Join(t.TempDir(), "adc.profile")
+	if err := os.WriteFile(path, []byte(strings.ReplaceAll(dockerAppArmorTemplate, "ADC_PROFILE_NAME", dockerAppArmorName())), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command(parser, "-Q", "-K", "-j", "1", path).CombinedOutput(); err != nil {
+		t.Fatalf("invalid AppArmor policy: %v\n%s", err, output)
 	}
 }
 
