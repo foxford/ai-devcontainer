@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,6 +26,44 @@ func graphRepository(t *testing.T) string {
 	writeFixture(t, filepath.Join(root, ".gitignore"), "graphify-out/\n.ai-devcontainer/\n")
 	writeFixture(t, filepath.Join(root, "main.go"), "package main\nfunc Alpha() {}\n")
 	return root
+}
+
+func TestGraphIndexAcceptsColonInTrackedAndUntrackedSourcePaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support colons in native filenames")
+	}
+	root := graphRepository(t)
+	tracked := filepath.Join(root, "apps", "spa-portal", "client", "src", "modules", "catalog", "pages", ":events", "api.js")
+	writeFixture(t, tracked, "export function events() { return 1; }\n")
+	if err := shared.Run(root, "git", "add", "apps"); err != nil {
+		t.Fatal(err)
+	}
+	untracked := filepath.Join(root, "routes", ":id", "api:client.js")
+	writeFixture(t, untracked, "export function client() { return 1; }\n")
+	calls := 0
+	run := func(string, string, ...string) error {
+		calls++
+		writeFixture(t, filepath.Join(root, "graphify-out", "graph.json"), `{"nodes":[]}`)
+		return nil
+	}
+	ensure := func() {
+		t.Helper()
+		if err := EnsureGraph(root, false, run, io.Discard); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ensure()
+	ensure()
+	if calls != 1 {
+		t.Fatal("unchanged colon paths rebuilt")
+	}
+	writeFixture(t, tracked, "export function events() { return 2; }\n")
+	ensure()
+	writeFixture(t, untracked, "export function client() { return 2; }\n")
+	ensure()
+	if calls != 3 {
+		t.Fatal("tracked or untracked colon-path changes missed")
+	}
 }
 func TestGraphIndexTracksDirtyFilesDeletionAndFailures(t *testing.T) {
 	root := graphRepository(t)

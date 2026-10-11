@@ -41,10 +41,13 @@ func graphFingerprint(root string) (string, error) {
 		if name == "" || strings.HasPrefix(name, "graphify-out/") || strings.HasPrefix(name, ".ai-devcontainer/") || strings.HasPrefix(name, ".adc/") || strings.HasPrefix(name, ".graphify") && name != ".graphifyignore" {
 			continue
 		}
-		path, err := childPath(root, name)
-		if err != nil {
-			return "", err
+		// Git reports native source names, not archive or delivery targets.
+		// Colons (for example :events route directories) are valid on Unix.
+		relative := filepath.FromSlash(name)
+		if !filepath.IsLocal(relative) {
+			return "", fmt.Errorf("некорректный относительный путь исходника Git: %q", name)
 		}
+		path := filepath.Join(root, relative)
 		info, err := os.Lstat(path)
 		if os.IsNotExist(err) {
 			continue

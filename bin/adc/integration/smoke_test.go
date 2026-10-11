@@ -136,6 +136,11 @@ func TestDockerWorkspace(t *testing.T) {
 		write(filepath.Join(project, ".ai-devcontainer", "skills-base", "example", "SKILL.md"), "legacy fork base")
 		write(filepath.Join(project, "AGENTS.md"), "Keep project rules\n")
 		write(filepath.Join(project, "example.ts"), "export function authenticate(name: string) { return name.length > 0; }\nexport function login(name: string) { return authenticate(name); }\n")
+		// Dynamic route names are valid Linux Git paths and must not prevent indexing.
+		if err := os.MkdirAll(filepath.Join(project, "pages", ":events"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(project, "pages", ":events", "api.js"), "export function eventRoute() { return 42; }\n")
 		write(filepath.Join(project, "orca.yaml"), "# team setup\nscripts:\n  setup: printf 'ADC_TEAM_SETUP_OK\\n'\n")
 		if err := os.Mkdir(filepath.Join(project, ".agents"), 0755); err != nil {
 			t.Fatal(err)
@@ -151,7 +156,7 @@ func TestDockerWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 		write(filepath.Join(project, ".claude", "skills", "mermaid-diagrams", "SKILL.md"), "ADC_USER_SKILL_PRESERVED\n")
-		run(project, "", "git", "add", "AGENTS.md", "orca.yaml", ".agents/motd.sh", "example.ts")
+		run(project, "", "git", "add", "AGENTS.md", "orca.yaml", ".agents/motd.sh", "example.ts", "pages")
 		run(project, "", "git", "-c", "user.name=ADC-Smoke", "-c", "user.email=adc-smoke@example.invalid", "commit", "-qm", "fixture")
 		args := []string{"project", "add", project, "--id", id}
 		if id == "app-a" {
@@ -329,6 +334,7 @@ func TestDockerWorkspace(t *testing.T) {
 		synced := docker("exec", "--user", "node", "--env", "ADC_INSTALL_AI_TOOLS=1", container, "adc", "sync", "app-a")
 		assertContains(synced, "Graphify: обновление")
 		assertContains(read(filepath.Join(project, "graphify-out", "graph.json")), "authenticate")
+		assertContains(read(filepath.Join(project, "graphify-out", "graph.json")), "pages/:events/api.js")
 		if _, err := os.Stat(filepath.Join(tmp, "app-b", "graphify-out")); !os.IsNotExist(err) {
 			t.Fatal("graph leaked into unrelated project")
 		}
