@@ -1,0 +1,13 @@
+[Unit]
+Description=ADC bridge to Chrome CDP on Windows
+After=network.target docker.service
+StartLimitIntervalSec=0
+
+[Service]
+User=nobody
+ExecStart=/usr/bin/socat TCP4-LISTEN:9334,bind=172.17.0.1,reuseaddr,fork TCP4:127.0.0.1:9333
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

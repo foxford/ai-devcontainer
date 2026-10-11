@@ -173,6 +173,8 @@ func TestDockerWorkspace(t *testing.T) {
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
 	assertContains(adc("workspace", "status"), "running (готов)")
+	// A default Docker profile denies the user namespace required by Codex bwrap.
+	execNode("unshare", "-Ur", "true")
 	for _, id := range []string{"app-a", "app-b"} {
 		assertContains(read(filepath.Join(tmp, id, ".claude", "skills", "mermaid-diagrams", "SKILL.md")), "ADC_USER_SKILL_PRESERVED")
 		execNode("test", "-f", filepath.Join(tmp, id, ".agents", "skills", "README.md"))
@@ -377,6 +379,34 @@ func TestDockerWorkspace(t *testing.T) {
 
 	var verifyBundles func()
 	if os.Getenv("ADC_TOOL_BUNDLES_INTEGRATION") == "1" {
+		t.Log("checking native Codex sandbox: project reads/writes and denied outside write")
+		// Install the already-supported agent in an isolated prefix, without real
+		// accounts/config or model requests. Exercise bwrap, not a mocked CLI.
+		codexPrefix := "/tmp/adc-smoke-native-codex"
+		arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+		if arch == "" {
+			t.Fatalf("unsupported Codex sandbox test architecture: %s", runtime.GOARCH)
+		}
+		// npm may silently omit an optional native package; make the platform
+		// artifact explicit so an installation failure is reported here.
+		native := "@openai/codex-linux-" + arch + "@npm:@openai/codex@0.162.1-linux-" + arch
+		execNode("npm", "install", "--prefix", codexPrefix, "--no-audit", "--no-fund", "@openai/codex@0.162.1", native)
+		execNode("mkdir", "-p", "/tmp/adc-smoke-native-codex-home")
+		outside := "/home/node/adc-smoke-sandbox-outside"
+		execNode("sh", "-c", "printf 'ADC_UNCHANGED\\n' > "+outside)
+		script := `cat /workspace/AGENTS.md /workspace/AGENTS.workspace.md AGENTS.platform.md AGENTS.skills.md >/dev/null
+printf 'ADC_ALLOWED\n' > adc-smoke-sandbox-inside
+if (printf 'ADC_FORBIDDEN\n' > /home/node/adc-smoke-sandbox-outside) 2>/dev/null; then
+  echo ADC_SANDBOX_OUTSIDE_WRITE_ALLOWED
+  exit 1
+fi
+echo ADC_SANDBOX_READ_WRITE_OK
+`
+		result := execNode("env", "CODEX_HOME=/tmp/adc-smoke-native-codex-home", filepath.Join(codexPrefix, "node_modules", ".bin", "codex"), "sandbox", "-P", ":workspace", "-C", filepath.Join(tmp, "app-a"), "--", "/bin/sh", "-ec", script)
+		assertContains(result, "ADC_SANDBOX_READ_WRITE_OK")
+		assertContains(execNode("cat", outside), "ADC_UNCHANGED")
+		assertContains(read(filepath.Join(tmp, "app-a", "adc-smoke-sandbox-inside")), "ADC_ALLOWED")
+		execNode("rm", "-f", outside, filepath.Join(tmp, "app-a", "adc-smoke-sandbox-inside"))
 		t.Log("installing real Graphify and OmniRoute without agent accounts")
 		execNode("adc", "tools", "install", "graphify")
 		execNode("adc", "tools", "install", "omniroute")
@@ -384,6 +414,37 @@ func TestDockerWorkspace(t *testing.T) {
 		write(filepath.Join(project, ".agents", "project.json"), `{"capabilities":["graphify"]}`)
 		synced := docker("exec", "--user", "node", "--env", "ADC_INSTALL_AI_TOOLS=1", container, "adc", "sync", "app-a")
 		assertContains(synced, "Graphify: обновление")
+		// Reproduce a native MCP client's allowlisted environment: use only
+		// HOME/PATH plus the environment explicitly delivered with this server.
+		var delivered struct {
+			Servers map[string]struct {
+				Command string            `json:"command"`
+				Args    []string          `json:"args"`
+				Env     map[string]string `json:"env"`
+			} `json:"mcpServers"`
+		}
+		if err := json.Unmarshal([]byte(read(filepath.Join(project, ".mcp.json"))), &delivered); err != nil {
+			t.Fatal(err)
+		}
+		checked := false
+		for name, server := range delivered.Servers {
+			if !strings.HasSuffix(name, "-graphify") {
+				continue
+			}
+			args := []string{"exec", "-i", "--user", "node", container, "env", "-i", "HOME=/home/node", "PATH=/usr/local/bin:/usr/bin:/bin:/opt/ai-tools/bin"}
+			for key, value := range server.Env {
+				args = append(args, key+"="+value)
+			}
+			args = append(args, server.Command)
+			args = append(args, server.Args...)
+			response := run(root, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n", "docker", args...)
+			assertContains(response, "adc-graphify")
+			assertContains(response, "graphify_affected")
+			checked = true
+		}
+		if !checked {
+			t.Fatal("Graphify missing from delivered MCP configuration")
+		}
 		assertContains(read(filepath.Join(project, "graphify-out", "graph.json")), "authenticate")
 		assertContains(read(filepath.Join(project, "graphify-out", "graph.json")), "pages/:events/api.js")
 		if _, err := os.Stat(filepath.Join(tmp, "app-b", "graphify-out")); !os.IsNotExist(err) {

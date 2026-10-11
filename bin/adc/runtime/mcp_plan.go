@@ -300,6 +300,10 @@ func (a *App) MCPPlan(p shared.Project) (MCPPlan, error) {
 		}
 	}
 	variables["REPO_ROOT"] = p.RuntimePath
+	// MCP clients may clear their inherited environment. Resolve ADC's runtime
+	// paths from the current application before delivering explicit server env.
+	variables["ADC_HOME"] = a.State
+	variables["AI_DEVCONTAINER_HOME"] = a.Platform
 	for _, name := range sortedKeys(merged) {
 		if merged[name] == nil {
 			plan.Disabled[name] = plan.Origins[name].Scope

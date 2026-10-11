@@ -124,6 +124,7 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 		return nil, err
 	}
 	args := []string{"run", "-d", "--init", "--name", a.shared().Container(c), "--label", "adc.workspace=" + c.Name, "--restart", "unless-stopped", "-p", fmt.Sprintf("127.0.0.1:%d:6768", c.Port), "--add-host", "host.docker.internal:host-gateway", "-e", "ADC_RUNTIME=1", "-e", fmt.Sprintf("ADC_ORCA_PORT=%d", c.Port), "-e", "ADC_HOME=/var/lib/adc", "-e", "AI_DEVCONTAINER_HOME=/opt/ai-devcontainer", "-e", "LIBGL_ALWAYS_SOFTWARE=1", "--mount", "type=volume,src=adc-" + c.Name + "-home,dst=/home/node", "--mount", "type=volume,src=adc-" + c.Name + "-tools,dst=/opt/ai-tools", "--mount", "type=volume,src=adc-" + c.Name + "-worktrees,dst=/workspace"}
+	args = append(args, "--security-opt", "seccomp="+a.dockerSeccompPath())
 	args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:20128", c.GatewayPort()), "-p", fmt.Sprintf("127.0.0.1:%d:4242", c.PreviewPort()))
 	for _, pair := range [][2]string{{a.Platform, "/opt/ai-devcontainer"}, {a.State, "/var/lib/adc"}} {
 		v, e := mount(pair[0], pair[1], pair[1] == "/opt/ai-devcontainer")
@@ -169,6 +170,9 @@ func (a *App) Start(c shared.Config) error {
 func (a *App) startPreparedImage(c shared.Config) error {
 	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {
 		return errors.New("миграция не завершена: adc migrate legacy finish; запуск среды заблокирован")
+	}
+	if err := a.prepareDockerSecurity(); err != nil {
+		return fmt.Errorf("подготовка Docker seccomp: %w", err)
 	}
 	args, e := a.DockerArgs(c)
 	if e != nil {

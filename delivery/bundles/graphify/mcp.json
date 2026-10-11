@@ -7,6 +7,9 @@
         "${REPO_ROOT}"
       ],
       "env": {
+        "ADC_RUNTIME": "1",
+        "ADC_HOME": "${ADC_HOME}",
+        "AI_DEVCONTAINER_HOME": "${AI_DEVCONTAINER_HOME}",
         "GRAPHIFY_NO_AUTO_REFRESH": "1",
         "GRAPHIFY_NO_TIPS": "1"
       }

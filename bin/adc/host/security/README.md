@@ -1,0 +1,9 @@
+# Docker seccomp для вложенного sandbox
+
+`seccomp.json` основан на [профиле Moby](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/seccomp/default.json), ревизия `6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef` от 2026-09-17, лицензия [Apache-2.0](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/LICENSE). Сохранены исходные default-deny, архитектуры, условия capabilities и возврат ENOSYS для clone3 без CAP_SYS_ADMIN.
+
+Две последние записи — дополнения ADC: разрешены unshare, mount, umount2, pivot_root и clone только с CLONE_NEWUSER. Они нужны непривилегированному bubblewrap Codex внутри контейнера; профиль не добавляет CAP_SYS_ADMIN, а проверки capabilities ядром сохраняются. setns и остальные привилегированные операции сохраняют условия исходного профиля. Дополнение clone исключает s390/s390x; поддерживаемые Linux runtime — amd64 и arm64.
+
+Профиль встроен в Go CLI, перед запуском записывается в ADC_HOME/security/seccomp-<SHA256>.json с правами 0600 и передаётся Docker через --security-opt. SHA-256 в имени включён в аргументы запуска и ключ контейнера: изменение политики приводит к пересозданию при следующем workspace start/update. Docker seccomp и sandbox Codex остаются включены; глобальные sysctl, privileged и seccomp=unconfined не используются.
+
+При обновлении основы сохраняйте источник и лицензию, две записи ADC и ограничения upstream. Go-тесты проверяют профиль и его доставку. Docker smoke проверяет unshare, а режим ADC_TOOL_BUNDLES_INTEGRATION дополнительно устанавливает поддерживаемый Codex 0.162.1 во временный prefix без аккаунтов: читает документы, пишет в проект и проверяет запрет записи в доступный по Unix правам файл вне проекта. Запросов к модели нет.

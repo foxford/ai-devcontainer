@@ -26,6 +26,27 @@ func mcpFixture(t *testing.T) (*App, shared.Project, string) {
 	return a, shared.Project{ID: "app", RuntimePath: t.TempDir()}, store
 }
 
+func TestGraphifyMCPDeclaresRuntimeEnvironment(t *testing.T) {
+	a, p, _ := mcpFixture(t)
+	p.Capabilities = []string{"graphify"}
+	// Neither a host environment nor project secrets may redirect the runtime
+	// registry used by a managed ADC MCP subprocess.
+	t.Setenv("ADC_RUNTIME", "0")
+	t.Setenv("ADC_HOME", "wrong-host-state")
+	t.Setenv("AI_DEVCONTAINER_HOME", "wrong-host-platform")
+	writeFixture(t, filepath.Join(p.RuntimePath, ".agents", "mcp.secrets.env"), "ADC_HOME=wrong-secret-state\nAI_DEVCONTAINER_HOME=wrong-secret-platform\n")
+	plan, err := a.MCPPlan(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := plan.resolved["graphify"]["env"].(map[string]any)
+	for key, want := range map[string]string{"ADC_RUNTIME": "1", "ADC_HOME": a.State, "AI_DEVCONTAINER_HOME": a.Platform} {
+		if env[key] != want {
+			t.Fatalf("Graphify subprocess %s = %v; want %s", key, env[key], want)
+		}
+	}
+}
+
 func TestMCPLayersMergeDisableGatesAndRedaction(t *testing.T) {
 	a, p, store := mcpFixture(t)
 	t.Setenv("ADC_TEST_MCP_VALUE", "environment-value")
