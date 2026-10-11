@@ -42,7 +42,7 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 	for _, side := range []string{"0", "1"} {
 		t.Run(side, func(t *testing.T) {
 			t.Setenv("ADC_RUNTIME", side)
-			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": side == "0", "ensure-image": side == "0", "project add": side == "0", "project list": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
+			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": side == "0", "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
 			for name, want := range cases {
 				cmd, rest, err := commandTree().Find(strings.Fields(name))
 				available := err == nil && len(rest) == 0 && cmd.Name() == strings.Fields(name)[len(strings.Fields(name))-1]
@@ -64,5 +64,33 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCapabilityHelpAndCompletion(t *testing.T) {
+	for _, side := range []string{"0", "1"} {
+		t.Setenv("ADC_RUNTIME", side)
+		for _, action := range []string{"list", "add", "rm"} {
+			var buf bytes.Buffer
+			cmd := commandTree()
+			cmd.SetOut(&buf)
+			cmd.SetArgs([]string{"project", "capability", action, "--help"})
+			if err := cmd.Execute(); err != nil || !strings.Contains(buf.String(), "adc project capability "+action) {
+				t.Fatal(buf.String(), err)
+			}
+		}
+		var buf bytes.Buffer
+		cmd := commandTree()
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{"__complete", "project", "capability", "add", "gra"})
+		if err := cmd.Execute(); err != nil || !strings.Contains(buf.String(), "graphify\t") {
+			t.Fatal(buf.String(), err)
+		}
+		cmd = commandTree()
+		cmd.SetArgs([]string{"project", "capability", "add"})
+		if err := cmd.Execute(); err == nil {
+			t.Fatal("accepted add without a capability")
+		}
 	}
 }

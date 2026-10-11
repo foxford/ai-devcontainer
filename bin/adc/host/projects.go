@@ -194,7 +194,11 @@ func (a *App) ProjectCommand(args []string) error {
 					c.Projects[i].Related = append(c.Projects[i].Related, q.ID)
 				}
 			}
-			return a.shared().Save(c)
+			if e = a.shared().Save(c); e != nil {
+				return e
+			}
+			fmt.Printf("Связь сохранена: %s → %s; adc workspace map обновит карту для агентов\n", p.ID, q.ID)
+			return nil
 		default:
 			return errors.New("adc project add|list|rm|knowledge|relate")
 		}

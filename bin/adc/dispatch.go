@@ -35,13 +35,39 @@ func dispatch(args []string) error {
 					if err != nil {
 						return err
 					}
-					return r.WriteMap(config)
+					if err = r.WriteMap(config); err != nil {
+						return err
+					}
+					fmt.Println("Карта проектов и знаний обновлена: /workspace/AGENTS.workspace.md")
+					return nil
 				})
 			}
 			return errors.New("управление Docker workspace доступно на хосте")
 		}
 		return h.Workspace(args[1:])
 	case "project":
+		if len(args) >= 3 && args[1] == "capability" {
+			if args[2] == "list" {
+				info, _ := os.Stdout.Stat()
+				_, noColor := os.LookupEnv("NO_COLOR")
+				color := info != nil && info.Mode()&os.ModeCharDevice != 0 && !noColor && os.Getenv("TERM") != "dumb"
+				return ctx.WriteCapabilities(wd, os.Stdout, color)
+			}
+			p, err := ctx.ChangeCapabilities(wd, args[2], args[3:])
+			if err != nil {
+				return err
+			}
+			fmt.Println("Возможности сохранены в .agents/project.json; синхронизация", p.ID)
+			if ctx.Runtime {
+				err = r.Sync([]string{p.RuntimePath})
+			} else {
+				err = h.Exec(p.RuntimePath, []string{"adc", "sync"}, false)
+			}
+			if err != nil {
+				return fmt.Errorf("настройки сохранены, доставка не завершена: %w; после исправления выполните adc sync", err)
+			}
+			return nil
+		}
 		return h.ProjectCommand(args[1:])
 	case "sync":
 		if ctx.Runtime {

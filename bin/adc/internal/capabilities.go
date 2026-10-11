@@ -23,8 +23,12 @@ func (a *App) ProjectCapabilities(p Project) ([]string, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	return validateCapabilities(catalog, p.Capabilities, team.Capabilities)
+}
+
+func validateCapabilities(catalog DeliveryCatalog, local, team []string) ([]string, error) {
 	var result []string
-	for _, capability := range append(append([]string{}, p.Capabilities...), team.Capabilities...) {
+	for _, capability := range append(append([]string{}, local...), team...) {
 		if _, ok := catalog.Capabilities[capability]; !ok {
 			return nil, fmt.Errorf("неизвестная capability %s", capability)
 		}

@@ -209,6 +209,24 @@ func TestDockerWorkspace(t *testing.T) {
 		t.Fatal("capability from app-a leaked into app-b")
 	}
 	assertContains(read(filepath.Join(tmp, "app-a", "AGENTS.md")), "Keep project rules")
+	assertContains(adc("project", "relate", "app-b", "app-a"), "Связь сохранена: app-b → app-a")
+	assertContains(adc("workspace", "map"), "Карта проектов и знаний обновлена")
+	assertContains(execNode("cat", "/workspace/AGENTS.workspace.md"), "Связи: app-a")
+	// Existing registrations can change team capabilities from either side;
+	// the command applies delivery immediately and leaves the neighbor intact.
+	projectB := filepath.Join(tmp, "app-b")
+	run(projectB, "", cli, "project", "capability", "add", "changesets")
+	assertContains(read(filepath.Join(projectB, "AGENTS.platform.md")), "Changesets")
+	catalogOutput := run(projectB, "", cli, "project", "capability", "list")
+	assertContains(catalogOutput, "✓")
+	assertContains(catalogOutput, "graphify")
+	docker("exec", "--user", "node", "--workdir", projectB, container, "adc", "project", "capability", "add", "pnpm-nx")
+	execNode("test", "-f", filepath.Join(projectB, "MONOREPO.md"))
+	docker("exec", "--user", "node", "--workdir", projectB, container, "adc", "project", "capability", "rm", "changesets", "pnpm-nx")
+	if strings.Contains(read(filepath.Join(projectB, "AGENTS.platform.md")), "Changesets") {
+		t.Fatal("removed team capability remained in instructions")
+	}
+	assertContains(read(filepath.Join(tmp, "app-a", "AGENTS.platform.md")), "Changesets")
 	execNode("test", "!", "-e", filepath.Join(tmp, "app-b", "MONOREPO.md"))
 	adc("worktree", "create", "app-a", "smoke-worktree")
 	var trees struct {

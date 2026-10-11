@@ -111,6 +111,36 @@ func commandTree() *cobra.Command {
 		return result, cobra.ShellCompDirectiveNoFileComp
 	})
 	leaf(project, "list", "Показать реестр проектов", cobra.NoArgs, "project", "list")
+	capability := &cobra.Command{Use: "capability", Short: "Каталог и возможности текущего проекта", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error {
+		return dispatch([]string{"project", "capability", "list"})
+	}}
+	project.AddCommand(capability)
+	leaf(capability, "list", "Показать каталог; ✓ отмечает выбранные возможности", cobra.NoArgs, "project", "capability", "list")
+	for _, action := range []string{"add", "rm"} {
+		help := "Добавить возможности текущему проекту и синхронизировать доставку"
+		if action == "rm" {
+			help = "Удалить командные возможности текущего проекта и синхронизировать доставку"
+		}
+		command := leaf(capability, action+" <имя> [имя...]", help, cobra.MinimumNArgs(1), "project", "capability", action)
+		command.ValidArgsFunction = func(_ *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
+			a, err := shared.New()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			catalog, err := a.DeliveryCatalog()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			var result []string
+			for name, capability := range catalog.Capabilities {
+				if strings.HasPrefix(name, prefix) && !shared.Contains(args, name) {
+					result = append(result, name+"\t"+capability.Description)
+				}
+			}
+			sort.Strings(result)
+			return result, cobra.ShellCompDirectiveNoFileComp
+		}
+	}
 	leaf(project, "rm <id>", "Отключить проект, сохранив его файлы", cobra.ExactArgs(1), "project", "rm")
 	leaf(project, "knowledge <id|global> <path> <origin>", "Зарегистрировать источник знаний", cobra.ExactArgs(3), "project", "knowledge")
 	leaf(project, "relate <id> <other-id>", "Добавить связь между проектами", cobra.ExactArgs(2), "project", "relate")
@@ -192,7 +222,7 @@ func configureCommandSide(root *cobra.Command, runtime bool) {
 	for _, command := range root.Commands() {
 		if command.Name() == "project" {
 			for _, child := range command.Commands() {
-				if child.Name() != "list" {
+				if child.Name() != "list" && child.Name() != "capability" {
 					command.RemoveCommand(child)
 				}
 			}
