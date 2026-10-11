@@ -21,7 +21,13 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 	if config, loadErr := a.shared().Load(); loadErr == nil {
 		p, projectErr := a.shared().Project(config, target)
 		if projectErr != nil && err == nil {
-			p, projectErr = a.shared().Project(config, root)
+			for _, candidate := range config.Projects {
+				candidateRoot, candidateErr := shared.Abs(a.shared().ProjectPath(candidate))
+				if candidateErr == nil && candidateRoot == root {
+					p, projectErr = candidate, nil
+					break
+				}
+			}
 		}
 		if projectErr == nil {
 			registered = &p

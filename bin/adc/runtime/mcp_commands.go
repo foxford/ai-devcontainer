@@ -161,16 +161,31 @@ func (a *App) MCP(p shared.Project, operation MCPOperation) error {
 			fmt.Println(string(data))
 			return nil
 		}
+		var rows [][]string
+		var details []string
 		for _, name := range sortedKeys(plan.Origins) {
-			state := "активен"
+			state, detail := "включён", ""
 			if scope, ok := plan.Disabled[name]; ok {
-				state = "выключен в " + scope
+				state, detail = "выключен", "отключён в "+scope
 			}
 			if reason, ok := plan.Reasons[name]; ok {
-				state = reason.Reason
+				state, detail = "недоступен", reason.Reason
 			}
-			fmt.Printf("%s\t%s\t%s\n", name, plan.Origins[name].Scope, state)
+			rows = append(rows, []string{name, plan.Origins[name].Scope, state})
+			if detail != "" {
+				details = append(details, name+": "+detail)
+			}
 		}
+		if err := shared.WriteTable(os.Stdout, []string{"Сервер", "Слой", "Статус"}, rows); err != nil {
+			return err
+		}
+		if len(details) > 0 {
+			fmt.Println("\nПодробности:")
+			for _, detail := range details {
+				fmt.Println("  " + detail)
+			}
+		}
+		fmt.Printf("\nВсего серверов: %d. Статус описывает конфигурацию; соединения здесь не проверяются.\n", len(rows))
 		return nil
 	}
 	if p.ReadOnly {

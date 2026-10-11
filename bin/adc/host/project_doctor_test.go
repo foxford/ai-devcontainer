@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -52,7 +53,7 @@ func TestProjectDoctorRecognizesCurrentDirectory(t *testing.T) {
 	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
-	if err := a.shared().Save(shared.Config{Version: shared.Schema, Name: "developer", Port: 6768, Projects: []shared.Project{{ID: "registered", Path: root, RuntimePath: root}}}); err != nil {
+	if err := a.shared().Save(shared.Config{Version: shared.Schema, Name: "developer", Port: 6768, Projects: []shared.Project{{ID: "registered", Path: root, RuntimePath: shared.RuntimePath(root, "registered")}}}); err != nil {
 		t.Fatal(err)
 	}
 	previous, err := os.Getwd()
@@ -70,6 +71,37 @@ func TestProjectDoctorRecognizesCurrentDirectory(t *testing.T) {
 	var out bytes.Buffer
 	if err := a.DoctorProject(".", &out); err != nil || !strings.Contains(out.String(), "OK: подключён как registered") || strings.Contains(out.String(), "ещё не подключён") {
 		t.Fatal(err, out.String())
+	}
+}
+
+func TestProjectDoctorRecognizesRegisteredPathAliases(t *testing.T) {
+	a, root := cleanupFixture(t)
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	alias := filepath.Join(t.TempDir(), "checkout-alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symlink privilege required: %v", err)
+	}
+	for _, runtimeSide := range []bool{false, true} {
+		if runtimeSide && runtime.GOOS == "windows" {
+			continue // The runtime runs in Linux; its paths are not native Windows paths.
+		}
+		a.Runtime = runtimeSide
+		if err := a.shared().Save(shared.Config{Version: shared.Schema, Name: "developer", Port: 6768, Projects: []shared.Project{{ID: "aliased", Path: alias, RuntimePath: shared.RuntimePath(alias, "aliased"), ReadOnly: true}}}); err != nil {
+			t.Fatal(err)
+		}
+		before, err := legacyPlatformDigest(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := a.DoctorProject(root, &out); err != nil || !strings.Contains(out.String(), "OK: подключён как aliased") || !strings.Contains(out.String(), "INFO: read-only") {
+			t.Fatal("alias lost registration or access mode", runtimeSide, err, out.String())
+		}
+		if after, err := legacyPlatformDigest(root); err != nil || after != before {
+			t.Fatal("doctor modified aliased checkout")
+		}
 	}
 }
 

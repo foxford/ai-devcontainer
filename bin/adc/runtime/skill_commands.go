@@ -30,7 +30,7 @@ func (a *App) Skill(root string, args []string) error {
 	projectRoot, baseRoot := filepath.Join(root, ".agents", "skills"), filepath.Join(root, shared.ProjectStateDir, "skills-base")
 	switch args[0] {
 	case "list":
-		fmt.Println("Скилл\tИсточник")
+		var rows [][]string
 		for _, name := range skillNames(layers) {
 			layer := layers[name]
 			origin := "платформа"
@@ -39,9 +39,14 @@ func (a *App) Skill(root string, args []string) error {
 			} else if layer.project != "" {
 				origin = "платформа + форк"
 			}
-			fmt.Printf("%s\t%s\n", name, origin)
+			rows = append(rows, []string{name, origin})
 		}
+		if err := shared.WriteTable(os.Stdout, []string{"Скилл", "Источник"}, rows); err != nil {
+			return err
+		}
+		fmt.Printf("\nВсего скиллов: %d\n", len(rows))
 	case "status":
+		var rows [][]string
 		for _, name := range skillNames(layers) {
 			files, err := skillFiles(layers[name].project)
 			if err != nil {
@@ -64,9 +69,14 @@ func (a *App) Skill(root string, args []string) error {
 				} else if !os.IsNotExist(err) {
 					return err
 				}
-				fmt.Printf("%s/%s\t%s\n", name, filepath.ToSlash(rel), status)
+				rows = append(rows, []string{name + "/" + filepath.ToSlash(rel), status})
 			}
 		}
+		if len(rows) == 0 {
+			fmt.Println("Проектных форков нет.")
+			return nil
+		}
+		return shared.WriteTable(os.Stdout, []string{"Файл", "Состояние"}, rows)
 	case "fork", "unfork":
 		if len(args) < 2 {
 			return errors.New("нужно имя скилла")

@@ -54,6 +54,12 @@ func TestDockerWorkspace(t *testing.T) {
 	}
 	adc := func(args ...string) string { t.Helper(); return run(root, "", cli, args...) }
 	docker := func(args ...string) string { t.Helper(); return run(root, "", "docker", args...) }
+	removeContainer := func() {
+		t.Helper()
+		// Give Orca a normal shutdown before checking persisted application state.
+		adc("workspace", "stop")
+		docker("rm", container)
+	}
 	execNode := func(args ...string) string {
 		t.Helper()
 		return docker(append([]string{"exec", "--user", "node", container}, args...)...)
@@ -183,13 +189,13 @@ func TestDockerWorkspace(t *testing.T) {
 	assertContains(execNode("cat", "/home/node/.zshrc"), "# Installer settings must survive")
 	// A later user-defined prompt takes precedence over the ADC defaults.
 	execNode("sh", "-c", `printf 'PROMPT="ADC_PERSONAL_PROMPT "\n' > "$HOME/.zshrc"`)
-	docker("rm", "-f", container)
+	removeContainer()
 	adc("workspace", "start")
 	custom := execNode("zsh", "-ic", `(( ! $+functions[omz] )) || exit 1; print -r -- "$PS1"`)
 	assertContains(custom, "ADC_PERSONAL_PROMPT")
 	// Restore the vendor-only profile and rerun initialization for the rest of the smoke.
 	execNode("sh", "-c", `printf '# Installer settings must survive\nexport PATH="$HOME/.local/bin:$PATH"\n' > "$HOME/.zshrc"`)
-	docker("rm", "-f", container)
+	removeContainer()
 	adc("workspace", "start")
 	var status struct {
 		Result struct{ Runtime struct{ Reachable bool } }
@@ -210,11 +216,22 @@ func TestDockerWorkspace(t *testing.T) {
 			Worktrees []struct{ Path, DisplayName string }
 		}
 	}
+	decode(t, adc("orca", "worktree", "list", "--json"), &trees)
+	worktree := ""
+	for _, tree := range trees.Result.Worktrees {
+		if tree.DisplayName == "smoke-worktree" {
+			worktree = tree.Path
+		}
+	}
+	if worktree == "" {
+		t.Fatal("Orca did not create the requested worktree")
+	}
+	execNode("test", "-f", filepath.Join(worktree, ".git"))
 	t.Log("checking that a project delivery error keeps Orca running")
 	contract := filepath.Join(tmp, "app-a", "AGENTS.platform.md")
 	originalContract := read(contract)
 	write(contract, "ADC_UNMANAGED_PROJECT_RULES\n")
-	docker("rm", "-f", container)
+	removeContainer()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	start := exec.CommandContext(ctx, cli, "workspace", "start")
 	start.Dir = root
@@ -241,14 +258,14 @@ func TestDockerWorkspace(t *testing.T) {
 	adc("workspace", "start")
 	assertContains(adc("workspace", "status"), "running (готов)")
 	decode(t, adc("orca", "worktree", "list", "--json"), &trees)
-	worktree := ""
+	persisted := false
 	for _, tree := range trees.Result.Worktrees {
-		if tree.DisplayName == "smoke-worktree" {
-			worktree = tree.Path
+		if tree.Path == worktree {
+			persisted = true
 		}
 	}
-	if worktree == "" {
-		t.Fatal("Orca did not create the requested worktree")
+	if !persisted {
+		t.Fatalf("worktree %s was lost after project delivery error and restart: %+v", worktree, trees.Result.Worktrees)
 	}
 	execNode("test", "-f", filepath.Join(worktree, ".git"))
 	var terminal struct {
@@ -385,7 +402,7 @@ func TestDockerWorkspace(t *testing.T) {
 		}
 	}
 	t.Log("recreating the container and checking persisted worktrees and home")
-	docker("rm", "-f", container)
+	removeContainer()
 	adc("workspace", "start")
 	execNode("test", "-f", filepath.Join(worktree, "AGENTS.platform.md"))
 	assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
