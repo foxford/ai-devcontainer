@@ -6,9 +6,64 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
+
+// The newly compiled helper owns both installation and runtime lifecycle.
+// Prepare everything before stopping agents so build/install failures leave
+// the current container running. An intentionally stopped workspace stays so.
+func (a *App) ApplyUpdate(install func() error) error {
+	if err := a.shared().RequireHost(); err != nil {
+		return err
+	}
+	var c shared.Config
+	state := ""
+	if _, err := os.Stat(filepath.Join(a.State, "workspace.json")); !os.IsNotExist(err) {
+		var err error
+		c, err = a.shared().Load()
+		if err != nil {
+			return err
+		}
+		state, err = shared.Output("", "docker", "container", "ls", "--all", "--filter", "name=^/"+a.shared().Container(c)+"$", "--format", "{{.State}}")
+		if err != nil {
+			return fmt.Errorf("не удалось проверить workspace перед обновлением: %w", err)
+		}
+	}
+	return updateWorkspace(strings.TrimSpace(state), func() error {
+		if err := a.EnsureImage(); err != nil {
+			return err
+		}
+		return install()
+	}, func() error {
+		return shared.Run("", "docker", "stop", a.shared().Container(c))
+	}, func() error { return a.startPreparedImage(c) })
+}
+
+func updateWorkspace(state string, prepare, stop, start func() error) error {
+	if state == "paused" {
+		return fmt.Errorf("workspace приостановлен; выполните docker unpause перед adc update")
+	}
+	resume := state == "running" || state == "restarting"
+	if resume {
+		fmt.Println("Workspace работает. После подготовки обновления он будет перезапущен; активные сеансы агентов завершатся.")
+	}
+	if err := prepare(); err != nil {
+		return err
+	}
+	if !resume {
+		fmt.Println("ADC обновлён. Workspace не запущен; запуск: adc workspace start.")
+		return nil
+	}
+	if err := stop(); err != nil {
+		return fmt.Errorf("ADC обновлён; остановить workspace не удалось: %w", err)
+	}
+	if err := start(); err != nil {
+		return fmt.Errorf("ADC обновлён; возобновление workspace: %w; состояние: adc workspace status; повтор: adc workspace start", err)
+	}
+	return nil
+}
 
 // Build and run the new command before installing it, so a compiler failure
 // keeps the last working executable. The helper also regenerates completion.

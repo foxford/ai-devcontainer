@@ -2,6 +2,7 @@ package host
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -11,6 +12,49 @@ import (
 	"testing"
 	"time"
 )
+
+func TestUpdateWorkspacePreservesLifecycleAndFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, fail, want string
+	}{
+		{"running", "running", "", "prepare,stop,start"},
+		{"restarting", "restarting", "", "prepare,stop,start"},
+		{"stopped", "exited", "", "prepare"},
+		{"created", "created", "", "prepare"},
+		{"absent", "", "", "prepare"},
+		{"build or install failure", "running", "prepare", "prepare"},
+		{"stop failure", "running", "stop", "prepare,stop"},
+		{"resume failure", "running", "start", "prepare,stop,start"},
+		{"paused", "paused", "paused", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []string
+			failure := errors.New("fixture failure")
+			step := func(name string) func() error {
+				return func() error {
+					calls = append(calls, name)
+					if tc.fail == name {
+						return failure
+					}
+					return nil
+				}
+			}
+			err := updateWorkspace(tc.state, step("prepare"), step("stop"), step("start"))
+			if got := strings.Join(calls, ","); got != tc.want {
+				t.Fatalf("lifecycle: %s; want %s", got, tc.want)
+			}
+			if (err != nil) != (tc.fail != "") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.fail != "" && tc.fail != "paused" && !errors.Is(err, failure) {
+				t.Fatalf("lost cause: %v", err)
+			}
+			if tc.fail == "start" && !strings.Contains(err.Error(), "adc workspace start") {
+				t.Fatalf("missing recovery command: %v", err)
+			}
+		})
+	}
+}
 
 func TestUpdateBuildsNewCommandBeforePublishing(t *testing.T) {
 	if runtime.GOOS == "windows" {

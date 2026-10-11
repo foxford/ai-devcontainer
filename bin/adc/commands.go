@@ -50,10 +50,7 @@ func commandTree() *cobra.Command {
 			return err
 		}
 		h := (*host.App)(a)
-		if err = h.EnsureImage(); err != nil {
-			return err
-		}
-		return h.Install(false, false, root)
+		return h.ApplyUpdate(func() error { return h.Install(false, false, root) })
 	}}
 	root.AddCommand(applyUpdate)
 	workspace := &cobra.Command{Use: "workspace", Short: "Управление общей Docker средой", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return c.Help() }}
@@ -169,7 +166,7 @@ func commandTree() *cobra.Command {
 	migrate := leaf(root, "migrate <project> <old-agent-home>", "Импорт авторизаций или переход со старых devcontainer", cobra.ExactArgs(2), "migrate")
 	legacyMigrationCommands(migrate)
 	leaf(root, "restore <backup-directory>", "Восстановить backup выбранных авторизаций", cobra.ExactArgs(1), "restore")
-	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить ADC, completion, Orca и образ"}, {"doctor", "Проверить установку и workspace"}} {
+	for _, s := range []struct{ name, help string }{{"ensure-image", "Собрать общий runtime"}, {"update", "Обновить ADC и перезапустить работающий workspace"}, {"doctor", "Проверить установку и workspace"}} {
 		command := leaf(root, s.name, s.help, cobra.NoArgs, s.name)
 		if s.name == "doctor" {
 			check := &cobra.Command{Use: "project <path|id>", Short: "Проверить проект, состояние доставки и ссылки без изменений", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {

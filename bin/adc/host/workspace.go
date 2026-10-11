@@ -163,6 +163,13 @@ func (a *App) Start(c shared.Config) error {
 	if e := a.EnsureImage(); e != nil {
 		return e
 	}
+	return a.startPreparedImage(c)
+}
+
+func (a *App) startPreparedImage(c shared.Config) error {
+	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {
+		return errors.New("миграция не завершена: adc migrate legacy finish; запуск среды заблокирован")
+	}
 	args, e := a.DockerArgs(c)
 	if e != nil {
 		return e

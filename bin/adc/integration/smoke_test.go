@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/foxford/ai-devcontainer/bin/adc/host"
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
 )
 
@@ -425,6 +426,26 @@ func TestDockerWorkspace(t *testing.T) {
 			dashboard()
 		}
 	}
+	t.Log("applying an update to a running workspace and waiting for readiness")
+	updated := &host.App{Platform: root, State: os.Getenv("ADC_HOME")}
+	before := docker("inspect", "--format", "{{.State.StartedAt}}", container)
+	// Exercise the new helper's image build and real Docker lifecycle; installing
+	// a desktop client or changing the developer's host shell is out of scope.
+	if err := updated.ApplyUpdate(func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if after := docker("inspect", "--format", "{{.State.StartedAt}}", container); after == before {
+		t.Fatal("update did not restart the running workspace")
+	}
+	assertContains(adc("workspace", "status"), "running (готов)")
+	execNode("test", "-f", filepath.Join(worktree, "AGENTS.platform.md"))
+	assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
+	adc("workspace", "stop")
+	if err := updated.ApplyUpdate(func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	assertContains(adc("workspace", "status"), "exited")
+	adc("workspace", "start")
 	t.Log("recreating the container and checking persisted worktrees and home")
 	removeContainer()
 	adc("workspace", "start")
