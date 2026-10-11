@@ -31,7 +31,17 @@ func TestDeliveryRepairsLegacyDSHLinksAndPreservesForeignLinks(t *testing.T) {
 	if err := os.MkdirAll(dsh, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for name, target := range map[string]string{"example": "/workspaces/" + filepath.Base(root) + "/.claude/skills/example", "graphify": "/workspaces/" + filepath.Base(root) + "/.claude/skills/graphify", "personal": "/custom/personal"} {
+	legacyRoot := "/workspaces/" + filepath.Base(root)
+	if runtime.GOOS == "windows" {
+		// Windows absolute links need a volume; use the supported checkout root.
+		legacyRoot = root
+	}
+	personal := filepath.Join(t.TempDir(), "personal")
+	for name, target := range map[string]string{
+		"example":  filepath.Join(legacyRoot, ".claude", "skills", "example"),
+		"graphify": filepath.Join(legacyRoot, ".claude", "skills", "graphify"),
+		"personal": personal,
+	} {
 		if err := os.Symlink(target, filepath.Join(dsh, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +57,7 @@ func TestDeliveryRepairsLegacyDSHLinksAndPreservesForeignLinks(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(dsh, "graphify")); !os.IsNotExist(err) {
 		t.Fatal("obsolete delivered link retained", err)
 	}
-	if link, err := os.Readlink(filepath.Join(dsh, "personal")); err != nil || link != "/custom/personal" {
+	if link, err := os.Readlink(filepath.Join(dsh, "personal")); err != nil || link != personal {
 		t.Fatal("foreign link modified", link, err)
 	}
 }
@@ -97,7 +107,12 @@ func TestLegacySkillReadmeAndForeignSkillDoNotBlockDelivery(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(readme), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/opt/dev-platform/docs/skills-README.md", readme); err != nil {
+	legacyReadme := "/opt/dev-platform/docs/skills-README.md"
+	if runtime.GOOS == "windows" {
+		// Exercise the same legacy document under a native absolute platform root.
+		legacyReadme = filepath.Join(a.Platform, "docs", "skills-README.md")
+	}
+	if err := os.Symlink(legacyReadme, readme); err != nil {
 		t.Fatal(err)
 	}
 	foreign := filepath.Join(root, ".claude", "skills", "example")
