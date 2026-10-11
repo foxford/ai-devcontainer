@@ -58,7 +58,7 @@ func TestBundleExportsResolveFromManifest(t *testing.T) {
 	}
 }
 func TestBundleRejectsBrokenAndAmbiguousExports(t *testing.T) {
-	for _, mode := range []string{"escape", "wrong-name", "missing-skill", "missing-mcp", "unknown-export", "duplicate-server", "non-object-server"} {
+	for _, mode := range []string{"escape", "wrong-name", "missing-skill", "missing-mcp", "unknown-export", "duplicate-server", "non-object-server", "activation-server", "activation-key", "activation-secret-default"} {
 		t.Run(mode, func(t *testing.T) {
 			a := &App{Platform: testutil.Delivery(t)}
 			path := a.DeliveryPath("bundles/graphify/bundle.json")
@@ -72,6 +72,19 @@ func TestBundleRejectsBrokenAndAmbiguousExports(t *testing.T) {
 			}
 			exports := bundle["exports"].(map[string]any)
 			switch mode {
+			case "activation-server", "activation-key", "activation-secret-default":
+				prompt := map[string]any{"key": "TOKEN", "label": "API key", "secret": true}
+				setup := map[string]any{"server": "graphify", "requirements": []string{"fixture"}, "prompts": []any{prompt}}
+				if mode == "activation-server" {
+					setup["server"] = "absent"
+				}
+				if mode == "activation-key" {
+					prompt["key"] = "BAD-ENV"
+				}
+				if mode == "activation-secret-default" {
+					prompt["default"] = "must-not-store"
+				}
+				bundle["activation"] = setup
 			case "escape":
 				exports["instructions"] = []string{"../../instructions/AGENTS.platform.md"}
 			case "wrong-name":

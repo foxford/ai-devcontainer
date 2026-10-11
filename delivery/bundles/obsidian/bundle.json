@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "obsidian",
-  "description": "MCP личного Obsidian vault на хосте",
+  "description": "MCP Obsidian: нужен открытый vault и Local REST API; CLI спросит адрес /mcp/ и API key",
   "exports": {
     "instructions": [
       "instructions.md"
@@ -17,5 +17,26 @@
         "obsidian"
       ]
     }
+  },
+  "activation": {
+    "server": "obsidian",
+    "requirements": [
+      "Obsidian запущен, нужный vault открыт",
+      "Плагин Local REST API включён; для HTTP включён Enable HTTP server (порт 27123)",
+      "Адрес /mcp/ доступен из ADC runtime; localhost внутри контейнера указывает на контейнер",
+      "API key из Settings → Local REST API"
+    ],
+    "prompts": [
+      {
+        "key": "url",
+        "label": "Адрес MCP Obsidian, доступный из контейнера",
+        "default": "http://host.docker.internal:27123/mcp/"
+      },
+      {
+        "key": "OBSIDIAN_API_KEY",
+        "label": "API key Obsidian Local REST API (ввод скрыт)",
+        "secret": true
+      }
+    ]
   }
 }

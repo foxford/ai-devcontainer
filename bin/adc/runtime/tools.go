@@ -12,6 +12,20 @@ func (a *App) Tool(dir string, args []string) error {
 	if len(args) == 0 {
 		return errors.New("отсутствует команда runtime")
 	}
+	// Probes and interactive input must never hold the shared delivery lock.
+	if args[0] == "mcp" && len(args) == 2 {
+		var operation MCPOperation
+		if err := json.Unmarshal([]byte(args[1]), &operation); err != nil {
+			return err
+		}
+		if operation.Action == "doctor" {
+			p, err := a.shared().CapabilityProject(dir)
+			if err != nil {
+				return err
+			}
+			return a.MCPDoctor(p, operation)
+		}
+	}
 	var indexed *shared.Project
 	err := a.shared().Locked(func() error {
 		config, err := a.shared().Load()

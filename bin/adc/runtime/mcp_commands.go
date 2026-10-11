@@ -20,6 +20,7 @@ type MCPOperation struct {
 	Definition string   `json:"definition,omitempty"`
 	Command    []string `json:"command,omitempty"`
 	JSON       bool     `json:"json,omitempty"`
+	Fix        bool     `json:"fix,omitempty"`
 }
 
 func (a *App) scopeFile(root, scope string) (string, error) {

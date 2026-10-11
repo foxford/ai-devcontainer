@@ -8,7 +8,7 @@ import (
 
 func TestCommandHelpAndCompletion(t *testing.T) {
 	t.Setenv("ADC_RUNTIME", "0")
-	for _, args := range [][]string{{"--help"}, {"project", "add", "--help"}, {"skill", "fork", "--help"}, {"mcp", "add", "--help"}, {"mcp", "list", "--help"}, {"plans", "--help"}, {"tools", "--help"}, {"tools", "graphify", "--help"}, {"tools", "install", "--help"}, {"tools", "claude-snapshot", "--help"}, {"tools", "pnpm-patch-dep", "--help"}, {"completion", "bash"}, {"completion", "zsh"}, {"completion", "fish"}, {"completion", "powershell"}} {
+	for _, args := range [][]string{{"--help"}, {"project", "add", "--help"}, {"skill", "fork", "--help"}, {"mcp", "add", "--help"}, {"mcp", "list", "--help"}, {"mcp", "doctor", "--help"}, {"plans", "--help"}, {"tools", "--help"}, {"tools", "graphify", "--help"}, {"tools", "install", "--help"}, {"tools", "claude-snapshot", "--help"}, {"tools", "pnpm-patch-dep", "--help"}, {"completion", "bash"}, {"completion", "zsh"}, {"completion", "fish"}, {"completion", "powershell"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var buf bytes.Buffer
 			cmd := commandTree()
@@ -24,7 +24,7 @@ func TestCommandHelpAndCompletion(t *testing.T) {
 			if args[0] == "project" && !strings.Contains(buf.String(), "--readonly") {
 				t.Fatal("declared flag missing from generated help")
 			}
-			if args[0] == "mcp" && !strings.Contains(buf.String(), "--json") {
+			if args[0] == "mcp" && args[1] != "doctor" && !strings.Contains(buf.String(), "--json") {
 				t.Fatal("MCP flags missing from generated help")
 			}
 		})

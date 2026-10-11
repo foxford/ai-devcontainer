@@ -13,9 +13,10 @@ import (
 )
 
 type mcpState struct {
-	Version     int      `json:"version"`
-	Servers     []string `json:"servers"`
-	ClaudeOwned bool     `json:"claudeOwned"`
+	Version      int      `json:"version"`
+	Servers      []string `json:"servers"`
+	ClaudeOwned  bool     `json:"claudeOwned"`
+	CodexHeaders []string `json:"codexHeaders,omitempty"`
 }
 
 func secureWrite(path string, data []byte) error {
@@ -227,26 +228,28 @@ func dshMCP(path, namespace, root string, servers map[string]MCPServer, oauth ma
 	return []byte(result), nil
 }
 
+func codexConfigPath(home string) string {
+	root := os.Getenv("CODEX_HOME")
+	if root == "" {
+		root = filepath.Join(home, ".codex")
+	}
+	return filepath.Join(root, "config.toml")
+}
+
 func codexEntryKind(path, name string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "none"
 	}
-	found, headers := false, false
+	found, headers, ours := false, false, false
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
 			section := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
-			ours := section == "mcp_servers."+name || section == "mcp_servers.\""+name+"\"" || strings.HasPrefix(section, "mcp_servers."+name+".") || strings.HasPrefix(section, "mcp_servers.\""+name+"\".")
-			if !ours {
-				if found {
-					break
-				}
-				continue
-			}
-			found = true
+			ours = section == "mcp_servers."+name || section == "mcp_servers.\""+name+"\"" || strings.HasPrefix(section, "mcp_servers."+name+".") || strings.HasPrefix(section, "mcp_servers.\""+name+"\".")
+			found = found || ours
 		}
-		if found && strings.Contains(line, "http_headers") {
+		if ours && strings.Contains(line, "http_headers") {
 			headers = true
 		}
 	}
@@ -259,7 +262,7 @@ func codexEntryKind(path, name string) string {
 	return "none"
 }
 
-func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string]bool) error {
+func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string]bool, ownedHeaders []string) error {
 	binary, err := exec.LookPath("codex")
 	if err != nil {
 		return nil
@@ -268,7 +271,10 @@ func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string
 	if err != nil {
 		return err
 	}
-	config := filepath.Join(home, ".codex", "config.toml")
+	config := codexConfigPath(home)
+	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
+		return err
+	}
 	call := func(args ...string) error {
 		cmd := exec.Command(binary, args...)
 		cmd.Env = append(os.Environ(), "ADC_DELIVERY=1")
@@ -279,7 +285,11 @@ func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string
 	}
 	for _, name := range previous {
 		if _, ok := servers[name]; !ok {
-			if codexEntryKind(config, name) != "none" {
+			kind := codexEntryKind(config, name)
+			if kind == "headers" && !shared.Contains(ownedHeaders, name) {
+				continue
+			}
+			if kind != "none" {
 				if err := call("mcp", "remove", name); err != nil {
 					return err
 				}
@@ -296,13 +306,37 @@ func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string
 		if url, _ := server["url"].(string); url != "" {
 			if headers, ok := server["headers"].(map[string]any); ok && len(headers) > 0 {
 				kind := codexEntryKind(config, name)
-				if kind == "other" {
+				if kind == "headers" && !shared.Contains(ownedHeaders, name) {
+					// Retain an explicitly configured human entry.
+					continue
+				}
+				if kind != "none" {
 					if err := call("mcp", "remove", name); err != nil {
 						return err
 					}
 				}
-				if kind != "headers" {
-					fmt.Fprintf(os.Stderr, "Codex: MCP %s требует ручного блока http_headers в %s; значения берите из файла секретов\n", name, config)
+				if err := call("mcp", "add", name, "--url", url); err != nil {
+					return err
+				}
+				data, err := os.ReadFile(config)
+				if err != nil {
+					return err
+				}
+				// Secret headers go directly into the private file, never CLI argv.
+				quoted, _ := json.Marshal(name)
+				var block strings.Builder
+				fmt.Fprintf(&block, "\n[mcp_servers.%s.http_headers]\n", quoted)
+				for _, key := range sortedKeys(headers) {
+					value, ok := headers[key].(string)
+					if !ok {
+						return fmt.Errorf("MCP %s: HTTP header должен быть строкой", name)
+					}
+					k, _ := json.Marshal(key)
+					v, _ := json.Marshal(value)
+					fmt.Fprintf(&block, "%s = %s\n", k, v)
+				}
+				if err := secureWrite(config, append(data, block.String()...)); err != nil {
+					return err
 				}
 				continue
 			}
@@ -362,16 +396,6 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	if err != nil {
 		return err
 	}
-	hermes := filepath.Join(home, ".hermes", "config.yaml")
-	dsh := filepath.Join(home, ".dsh", "cordis.patch.yml")
-	hermesData, err := hermesMCP(hermes, servers, state.Servers)
-	if err != nil {
-		return err
-	}
-	dshData, err := dshMCP(dsh, namespace, p.RuntimePath, servers, oauth)
-	if err != nil {
-		return err
-	}
 	claude := filepath.Join(p.RuntimePath, ".mcp.json")
 	if !exists {
 		if _, err := os.Lstat(claude); os.IsNotExist(err) {
@@ -382,7 +406,37 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	}
 	// Checkpoint ownership and the union of old/new names before any agent write.
 	// If an external CLI fails, the next sync can retry and still remove stale names.
+	managedHeaders := []string{}
+	config := codexConfigPath(home)
+	for _, name := range sortedKeys(servers) {
+		server := servers[name]
+		address, _ := server["url"].(string)
+		headers, _ := server["headers"].(map[string]any)
+		if address != "" && len(headers) > 0 && !oauth[name] && (shared.Contains(state.CodexHeaders, name) || codexEntryKind(config, name) != "headers") {
+			managedHeaders = append(managedHeaders, name)
+		}
+	}
+	ownedHeaders := append([]string{}, state.CodexHeaders...)
+	for _, name := range managedHeaders {
+		if !shared.Contains(ownedHeaders, name) {
+			ownedHeaders = append(ownedHeaders, name)
+		}
+	}
+	delivery := agentDelivery{Project: p, Home: home, Namespace: namespace, Servers: servers, OAuth: oauth, Previous: state, Headers: ownedHeaders}
+	var commits []func() error
+	for _, driver := range agentDrivers() {
+		commit, err := driver.Prepare(delivery)
+		if err != nil {
+			return fmt.Errorf("%s: %w", driver.Name(), err)
+		}
+		commits = append(commits, commit)
+	}
 	pending := state
+	for _, name := range managedHeaders {
+		if !shared.Contains(pending.CodexHeaders, name) {
+			pending.CodexHeaders = append(pending.CodexHeaders, name)
+		}
+	}
 	names := map[string]bool{}
 	for _, name := range state.Servers {
 		names[name] = true
@@ -402,33 +456,13 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	if err := a.ensureProjectSecrets(p.RuntimePath); err != nil {
 		return err
 	}
-	if state.ClaudeOwned {
-		if len(servers) == 0 {
-			if err := os.Remove(claude); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-		} else {
-			data, err := json.MarshalIndent(map[string]any{"mcpServers": servers}, "", "  ")
-			if err != nil {
-				return err
-			}
-			if err := secureWrite(claude, append(data, '\n')); err != nil {
-				return err
-			}
+	for _, commit := range commits {
+		if err := commit(); err != nil {
+			return err
 		}
-	} else {
-		fmt.Fprintln(os.Stderr, "MCP: пользовательский .mcp.json сохранён:", p.RuntimePath)
-	}
-	if err := secureWrite(hermes, hermesData); err != nil {
-		return err
-	}
-	if err := secureWrite(dsh, dshData); err != nil {
-		return err
-	}
-	if err := syncCodex(servers, state.Servers, oauth); err != nil {
-		return err
 	}
 	state.Servers = sortedKeys(servers)
+	state.CodexHeaders = managedHeaders
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err

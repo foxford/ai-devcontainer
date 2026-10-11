@@ -17,15 +17,16 @@ type DeliveryDocument struct {
 }
 
 type DeliveryCapability struct {
-	Bundle       string             `json:"bundle,omitempty"`
-	MCPSource    string             `json:"mcpSource,omitempty"`
-	Description  string             `json:"description"`
-	Instructions []string           `json:"instructions"`
-	Documents    []DeliveryDocument `json:"documents"`
-	MCP          []string           `json:"mcp"`
-	Conflicts    []string           `json:"conflicts,omitempty"`
-	Skills       []string           `json:"skills,omitempty"`
-	Tools        []DeliveryTool     `json:"tools,omitempty"`
+	Activation   *CapabilityActivation `json:"activation,omitempty"`
+	Bundle       string                `json:"bundle,omitempty"`
+	MCPSource    string                `json:"mcpSource,omitempty"`
+	Description  string                `json:"description"`
+	Instructions []string              `json:"instructions"`
+	Documents    []DeliveryDocument    `json:"documents"`
+	MCP          []string              `json:"mcp"`
+	Conflicts    []string              `json:"conflicts,omitempty"`
+	Skills       []string              `json:"skills,omitempty"`
+	Tools        []DeliveryTool        `json:"tools,omitempty"`
 }
 
 type DeliveryTool struct {

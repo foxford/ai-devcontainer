@@ -16,7 +16,8 @@ func (a *App) Agent(args []string) error {
 	if len(argv) > 0 && argv[0] == "--" {
 		argv = argv[1:]
 	}
-	if !shared.Contains([]string{"claude", "codex", "opencode", "hermes", "dsh"}, name) {
+	driver := findAgentDriver(name)
+	if driver == nil {
 		return errors.New("неподдерживаемый agent adapter")
 	}
 	real := filepath.Join("/opt/ai-tools/bin", name)
@@ -44,6 +45,31 @@ func (a *App) Agent(args []string) error {
 			os.Stdout = previous
 			if err != nil {
 				return err
+			}
+		}
+	}
+	dir, _ := os.Getwd()
+	root, gitErr := shared.Output(dir, "git", "rev-parse", "--show-toplevel")
+	if gitErr == nil {
+		if _, err := a.shared().CapabilityProject(root); err == nil {
+			var overrides map[string]string
+			var err error
+			argv, overrides, err = driver.Launch(root, argv, administrative)
+			if err != nil {
+				return err
+			}
+			for key, value := range overrides {
+				previous, existed := os.LookupEnv(key)
+				if err := os.Setenv(key, value); err != nil {
+					return err
+				}
+				defer func(key, previous string, existed bool) {
+					if existed {
+						_ = os.Setenv(key, previous)
+					} else {
+						_ = os.Unsetenv(key)
+					}
+				}(key, previous, existed)
 			}
 		}
 	}

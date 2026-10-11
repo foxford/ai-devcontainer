@@ -223,6 +223,15 @@ func (a *App) SyncProject(p shared.Project) error {
 			return e
 		}
 	}
+	return a.ignoreProject(p)
+}
+
+func (a *App) ignoreProject(p shared.Project) error {
+	root := p.RuntimePath
+	capabilities, e := a.shared().ProjectCapabilities(p)
+	if e != nil {
+		return e
+	}
 	ignore := filepath.Join(root, ".gitignore")
 	patterns := []string{"/.adc/", "/.ai-devcontainer/", "/AGENTS.platform.md", "/AGENTS.skills.md", "/.claude/skills/", "/.dsh/skills/", "/.mcp.json", "/.agents/mcp.local.json", "/.agents/mcp.secrets.env"}
 	if shared.Contains(capabilities, "graphify") {

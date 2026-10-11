@@ -53,12 +53,26 @@ func dispatch(args []string) error {
 				color := info != nil && info.Mode()&os.ModeCharDevice != 0 && !noColor && os.Getenv("TERM") != "dumb"
 				return ctx.WriteCapabilities(wd, os.Stdout, color)
 			}
+			if !ctx.Runtime && args[2] == "add" {
+				if _, err := ctx.ChangeCapabilities(wd, args[2], args[3:]); err != nil {
+					return err
+				}
+				if err := forward(wd, true); err != nil {
+					return fmt.Errorf("выбор сохранён; настройка в runtime не завершена: %w; повторите adc project capability add после запуска workspace", err)
+				}
+				return nil
+			}
 			p, err := ctx.ChangeCapabilities(wd, args[2], args[3:])
 			if err != nil {
 				return err
 			}
 			fmt.Println("Возможности сохранены в .agents/project.json; синхронизация", p.ID)
 			if ctx.Runtime {
+				if args[2] == "add" {
+					if err := r.ActivateCapabilities(p, args[3:]); err != nil {
+						return fmt.Errorf("выбор сохранён; активация не завершена: %w; повторите capability add или adc mcp doctor --fix", err)
+					}
+				}
 				err = r.Sync([]string{p.RuntimePath})
 			} else {
 				err = h.Exec(p.RuntimePath, []string{"adc", "sync"}, false)

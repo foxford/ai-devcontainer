@@ -35,7 +35,7 @@ ADC не создаёт отдельный vault и не монтирует ли
 
 ## MCP Obsidian
 
-Capability `obsidian` доставляет MCP для Obsidian на хосте через плагин Local REST API. Для настройки из терминала проекта выполни `adc mcp enable obsidian --project`: ключ `OBSIDIAN_API_KEY` сохранится локально. Точные шаги подключения описаны в `docs/workspace.md` платформы. ADC не устанавливает Obsidian и его плагины автоматически.
+Capability `obsidian` доставляет MCP для Obsidian на хосте через плагин Local REST API. Для настройки из терминала проекта выполни `adc project capability add obsidian`: CLI спросит адрес MCP и ключ `OBSIDIAN_API_KEY`, сохранит их локально и проверит подключение. Для диагностики и исправления используй `adc mcp doctor obsidian --fix`. Точные шаги подключения описаны в `docs/workspace.md` платформы. ADC не устанавливает Obsidian и его плагины автоматически.
 
 Если инструментов Obsidian нет, сообщи об этом и используй файловый доступ только к явно подключённому vault. Наличие MCP не даёт разрешения изменять заметки без поручения пользователя.
 

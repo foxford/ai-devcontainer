@@ -17,6 +17,7 @@ import (
 func mcpFixture(t *testing.T) (*App, shared.Project, string) {
 	t.Helper()
 	home := testutil.Home(t)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	store := t.TempDir()
 	t.Setenv("AI_DEVCONTAINER_MCP_STORE", store)
 	// Agent config tests must not invoke a CLI installed on the developer's machine.

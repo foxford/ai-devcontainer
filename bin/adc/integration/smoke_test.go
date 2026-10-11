@@ -325,6 +325,56 @@ func TestDockerWorkspace(t *testing.T) {
 	execNode("test", "-f", filepath.Join(worktree, "AGENTS.platform.md"))
 	execNode("sh", "-c", `printf 'ADC_PERSIST_SMOKE\n' > "$HOME/adc-smoke-persist"; printf '# ADC_USER_SHELL_SETTINGS\n' >> "$HOME/.zshrc"; printf 'ADC_HISTORY_PERSIST\n' >> "$HOME/.history/.bash_history"`)
 
+	t.Log("checking capability activation and authenticated MCP doctor inside the runtime")
+	fixtureBinary := filepath.Join(tmp, "mcp-fixture")
+	fixtureBuild := exec.Command("go", "test", "-c", "-o", fixtureBinary, "./bin/adc/integration")
+	fixtureBuild.Dir = root
+	fixtureBuild.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := fixtureBuild.CombinedOutput(); err != nil {
+		t.Fatalf("fixture build: %v %s", err, output)
+	}
+	docker("cp", fixtureBinary, container+":/tmp/adc-mcp-fixture")
+	docker("exec", container, "chmod", "755", "/tmp/adc-mcp-fixture")
+	docker("exec", "-d", "--user", "node", "--env", "ADC_MCP_HTTP_FIXTURE=1", container, "/tmp/adc-mcp-fixture", "-test.run=^TestDockerMCPHTTPFixture$")
+	// The shell only launches a Go test fixture; config generation remains Go.
+	run(root, "#!/bin/sh\nADC_CODEX_CONFIG_FIXTURE=1 exec /tmp/adc-mcp-fixture -test.run=^TestDockerCodexConfigFixture$ -- \"$@\"\n", "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > /opt/ai-tools/bin/codex; chmod +x /opt/ai-tools/bin/codex")
+	projectA := filepath.Join(tmp, "app-a")
+	write(filepath.Join(projectA, ".agents", "mcp.local.json"), `{"mcpServers":{"obsidian":{"url":"http://127.0.0.1:27791/mcp/"}}}`)
+	write(filepath.Join(projectA, ".agents", "mcp.secrets.env"), "OBSIDIAN_API_KEY=adc-fixture-key\n")
+	assertContains(run(projectA, "", cli, "project", "capability", "add", "obsidian"), "tools/list OK")
+	assertContains(run(projectA, "", cli, "mcp", "doctor", "obsidian"), "инструментов: 1")
+	// Native formats contain headers; human preferences and another checkout survive.
+	codexConfig := execNode("cat", "/home/node/.codex/config.toml")
+	assertContains(codexConfig, "http_headers")
+	assertContains(codexConfig, "Bearer adc-fixture-key")
+	assertContains(read(filepath.Join(projectA, ".adc", "opencode.json")), "\"remote\"")
+	assertContains(read(filepath.Join(projectA, ".mcp.json")), "Bearer adc-fixture-key")
+	run(root, "#!/bin/sh\nprintf '%s' \"$OPENCODE_CONFIG_CONTENT\" > /tmp/adc-opencode-env.json\nprintf 'ADC_OPENCODE_STARTED\\n'\n", "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > /opt/ai-tools/bin/opencode; chmod +x /opt/ai-tools/bin/opencode")
+	assertContains(docker("exec", "--user", "node", "--workdir", projectA, container, "opencode"), "ADC_OPENCODE_STARTED")
+	assertContains(execNode("cat", "/tmp/adc-opencode-env.json"), "Bearer adc-fixture-key")
+	foreign := `{"mcpServers":{"personal":{"command":"personal-cli"}}}`
+	// Simulate a previously human-owned Claude file in a separate checkout.
+	write(filepath.Join(projectB, ".mcp.json"), foreign)
+	// B was originally ADC-owned: preserve the existing ownership contract.
+	write(filepath.Join(projectB, ".adc", "mcp-state.json"), `{"version":1,"servers":[],"claudeOwned":false}`)
+	run(root, "#!/bin/sh\nprintf '%s\\n' \"$@\" > /tmp/adc-claude-args.txt\nprintf 'ADC_CLAUDE_STARTED\\n'\n", "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > /opt/ai-tools/bin/claude; chmod +x /opt/ai-tools/bin/claude")
+	assertContains(docker("exec", "--user", "node", "--workdir", projectB, container, "claude"), "ADC_CLAUDE_STARTED")
+	assertContains(execNode("cat", "/tmp/adc-claude-args.txt"), "--mcp-config")
+	if read(filepath.Join(projectB, ".mcp.json")) != foreign {
+		t.Fatal("human Claude MCP config changed")
+	}
+	write(filepath.Join(projectA, ".agents", "mcp.secrets.env"), "OBSIDIAN_API_KEY=wrong-fixture-key\n")
+	failedDoctor := exec.Command(cli, "mcp", "doctor", "obsidian")
+	failedDoctor.Dir = projectA
+	output, doctorErr := failedDoctor.CombinedOutput()
+	if doctorErr == nil || !strings.Contains(string(output), "401/403") || strings.Contains(string(output), "wrong-fixture-key") {
+		t.Fatalf("bad API key passed doctor or leaked: %v %s", doctorErr, strings.ReplaceAll(string(output), "wrong-fixture-key", "[redacted]"))
+	}
+	write(filepath.Join(projectA, ".agents", "mcp.secrets.env"), "OBSIDIAN_API_KEY=adc-fixture-key\n")
+	assertContains(run(projectA, "", cli, "project", "capability", "rm", "obsidian"), "app-a OK")
+	// Restore the pre-existing smoke agent; following bundle tests use this stub.
+	run(root, "#!/bin/sh\nprintf 'ADC_AGENT_STARTED\\n'\n", "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > /opt/ai-tools/bin/codex; chmod +x /opt/ai-tools/bin/codex")
+
 	var verifyBundles func()
 	if os.Getenv("ADC_TOOL_BUNDLES_INTEGRATION") == "1" {
 		t.Log("installing real Graphify and OmniRoute without agent accounts")

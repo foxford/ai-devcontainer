@@ -26,7 +26,7 @@ func executeMCP(operation runtimecmd.MCPOperation) error {
 	if ctx.Runtime {
 		return (*runtimecmd.App)(ctx).Tool(dir, []string{"mcp", string(data)})
 	}
-	return (*host.App)(ctx).Exec(dir, []string{"adc", "runtime-tool", "mcp", string(data)}, true)
+	return (*host.App)(ctx).Exec(dir, []string{"adc", "runtime-tool", "mcp", string(data)}, operation.Action != "doctor" || operation.Fix)
 }
 
 func runtimeCommands(root *cobra.Command) {
@@ -69,6 +69,7 @@ func runtimeCommands(root *cobra.Command) {
 		args       cobra.PositionalArgs
 	}{
 		{"list", "Показать активные серверы, источники и условия", cobra.NoArgs},
+		{"doctor [name]", "Проверить initialize и tools/list; --fix запросит настройки", cobra.MaximumNArgs(1)},
 		{"add [name] [-- command args...]", "Добавить HTTP/stdio сервер или JSON сниппет", cobra.ArbitraryArgs},
 		{"rm <name>", "Удалить сервер из редактируемого слоя", cobra.ExactArgs(1)},
 		{"enable <name>", "Включить сервер и запросить недостающий секрет", cobra.ExactArgs(1)},
@@ -101,7 +102,10 @@ func runtimeCommands(root *cobra.Command) {
 			}
 			return executeMCP(operation)
 		}
-		if spec.use != "list" && spec.use != "sync" {
+		if spec.use == "doctor [name]" {
+			cmd.Flags().BoolVar(&operation.Fix, "fix", false, "Запросить адрес и недостающие секреты, сохранить и доставить настройки")
+		}
+		if spec.use != "list" && spec.use != "sync" && spec.use != "doctor [name]" {
 			for _, scope := range []string{"global", "user", "project", "local"} {
 				cmd.Flags().Bool(scope, false, "Выбрать слой "+scope)
 			}
