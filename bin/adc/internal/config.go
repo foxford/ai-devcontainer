@@ -176,10 +176,19 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 // OS locks release on process exit, including an interrupted container rebuild.
 // Keep the inode: unlinking a lock file can let two processes lock different files.
 func (a *App) Locked(fn func() error) error {
+	return a.LockedFile("write.lockfile", fn)
+}
+
+// Separate host lifecycle operations from runtime configuration writes: the
+// runtime must be able to sync while the host waits for readiness.
+func (a *App) LockedFile(name string, fn func() error) error {
+	if filepath.Base(name) != name || name == "." || name == ".." || name == "" || strings.ContainsAny(name, `/\`) {
+		return errors.New("неверное имя lock")
+	}
 	if e := os.MkdirAll(a.State, 0700); e != nil {
 		return e
 	}
-	path := filepath.Join(a.State, "write.lockfile")
+	path := filepath.Join(a.State, name)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err

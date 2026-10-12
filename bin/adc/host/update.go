@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
@@ -18,30 +17,53 @@ func (a *App) ApplyUpdate(install func() error) error {
 	if err := a.shared().RequireHost(); err != nil {
 		return err
 	}
+	return a.shared().LockedFile("lifecycle.lockfile", func() error { return a.applyUpdate(install) })
+}
+
+func (a *App) applyUpdate(install func() error) error {
+	if err := a.checkMigration(); err != nil {
+		return err
+	}
 	var c shared.Config
 	state := ""
+	var prepared *preparedWorkspace
 	if _, err := os.Stat(filepath.Join(a.State, "workspace.json")); !os.IsNotExist(err) {
 		var err error
 		c, err = a.shared().Load()
 		if err != nil {
 			return err
 		}
-		state, err = shared.Output("", "docker", "container", "ls", "--all", "--filter", "name=^/"+a.shared().Container(c)+"$", "--format", "{{.State}}")
+		if resumed, err := a.resumeReplacement(c, realDocker(), a.replacementWait(c)); resumed || err != nil {
+			return err
+		}
+		existing, err := realDocker().container(a.shared().Container(c))
 		if err != nil {
 			return fmt.Errorf("не удалось проверить workspace перед обновлением: %w", err)
 		}
+		if existing != nil {
+			state = existing.State.Status
+		}
 	}
-	return updateWorkspace(strings.TrimSpace(state), func() error {
-		if err := a.EnsureImage(); err != nil {
+	return updateWorkspace(state, func() error {
+		image, err := a.ensureImage()
+		if err != nil {
 			return err
 		}
+		// Security profiles, config, image ID and Docker inspection are resolved
+		// before installation and before the replacement stops any agents.
+		if c.Name != "" {
+			var err error
+			prepared, err = a.prepareWorkspace(c, image)
+			if err != nil {
+				return err
+			}
+			prepared.Replace = true
+		}
 		return install()
-	}, func() error {
-		return shared.Run("", "docker", "stop", a.shared().Container(c))
-	}, func() error { return a.startPreparedImage(c) })
+	}, func() error { return a.launchWorkspace(prepared, realDocker(), a.replacementWait(c)) })
 }
 
-func updateWorkspace(state string, prepare, stop, start func() error) error {
+func updateWorkspace(state string, prepare, restart func() error) error {
 	if state == "paused" {
 		return fmt.Errorf("workspace приостановлен; выполните docker unpause перед adc update")
 	}
@@ -56,10 +78,8 @@ func updateWorkspace(state string, prepare, stop, start func() error) error {
 		fmt.Println("ADC обновлён. Workspace не запущен; запуск: adc workspace start.")
 		return nil
 	}
-	if err := stop(); err != nil {
-		return fmt.Errorf("ADC обновлён; остановить workspace не удалось: %w", err)
-	}
-	if err := start(); err != nil {
+	// Replacement owns stop/rename/run and its journal as one recoverable flow.
+	if err := restart(); err != nil {
 		return fmt.Errorf("ADC обновлён; возобновление workspace: %w; состояние: adc workspace status; повтор: adc workspace start", err)
 	}
 	return nil
@@ -70,6 +90,24 @@ func updateWorkspace(state string, prepare, stop, start func() error) error {
 func (a *App) Update() error {
 	if err := a.shared().RequireHost(); err != nil {
 		return err
+	}
+	// The parent holds the source lock while the compiled helper takes only the
+	// lifecycle lock. Start takes the same locks in this order.
+	return a.shared().LockedFile("update.lockfile", a.update)
+}
+
+func (a *App) update() error {
+	if _, err := os.Stat(a.replacementPath()); err == nil {
+		return fmt.Errorf("переключение workspace не завершено: выполните adc workspace start перед следующим adc update")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	status, err := shared.Output("", "git", "-C", a.Platform, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		return fmt.Errorf("платформа содержит локальные изменения; сохраните их перед adc update; файлы не изменены")
 	}
 	if err := shared.Run("", "git", "-C", a.Platform, "pull", "--ff-only"); err != nil {
 		return err

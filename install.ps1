@@ -78,6 +78,6 @@ if ($NoShell) { $arguments += '--no-shell' }
 if ($LASTEXITCODE -ne 0) { throw 'ADC install failed; see the diagnostic above' }
 if (-not $NoShell) {
     $env:Path = (Split-Path $bin) + ';' + $env:Path
-    $completion = Join-Path $state 'completions/adc.powershell'
+    $completion = Join-Path $state 'completions/adc.ps1'
     if (Test-Path $completion) { . $completion }
 }

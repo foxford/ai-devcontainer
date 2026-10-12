@@ -196,6 +196,7 @@ func commandTree() *cobra.Command {
 	agent := leaf(root, "agent <name> [arguments...]", "Запустить агента после доставки контекста checkout", cobra.MinimumNArgs(1), "agent")
 	agent.DisableFlagParsing = true
 	configureCommandSide(root, os.Getenv("ADC_RUNTIME") == "1")
+	completionCommands(root)
 	return root
 }
 

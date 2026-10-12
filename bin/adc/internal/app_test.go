@@ -166,6 +166,17 @@ func TestLockReleasedAfterProcessDeath(t *testing.T) {
 	}
 }
 
+func TestHostLifecycleLockAllowsRuntimeDelivery(t *testing.T) {
+	a := &App{State: t.TempDir()}
+	if err := a.LockedFile("update.lockfile", func() error {
+		return a.LockedFile("lifecycle.lockfile", func() error {
+			return a.Locked(func() error { return nil })
+		})
+	}); err != nil {
+		t.Fatal("host preparation blocked runtime config delivery", err)
+	}
+}
+
 func TestCatalogSelectsMCPAndAllowsNewCapabilities(t *testing.T) {
 	root := testutil.Delivery(t)
 	a := &App{Platform: root}

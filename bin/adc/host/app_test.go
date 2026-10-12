@@ -115,7 +115,7 @@ func TestShellInstallIsIdempotent(t *testing.T) {
 		t.Fatal("user profile overwritten")
 	}
 	for _, s := range []string{"bash", "zsh", "fish", "powershell"} {
-		if info, e := os.Stat(filepath.Join(a.State, "completions", "adc."+s)); e != nil || info.Size() == 0 {
+		if info, e := os.Stat(filepath.Join(a.State, "completions", shared.CompletionFilename(s))); e != nil || info.Size() == 0 {
 			t.Fatalf("no completion for %s", s)
 		}
 	}

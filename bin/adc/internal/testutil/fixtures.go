@@ -16,6 +16,7 @@ func Home(t *testing.T) string {
 	t.Setenv("ADC_HOME", filepath.Join(home, ".adc"))
 	t.Setenv("ADC_RUNTIME", "0")
 	t.Setenv("ZDOTDIR", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	return home
 }
 

@@ -17,14 +17,13 @@ func TestUpdateWorkspacePreservesLifecycleAndFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name, state, fail, want string
 	}{
-		{"running", "running", "", "prepare,stop,start"},
-		{"restarting", "restarting", "", "prepare,stop,start"},
+		{"running", "running", "", "prepare,start"},
+		{"restarting", "restarting", "", "prepare,start"},
 		{"stopped", "exited", "", "prepare"},
 		{"created", "created", "", "prepare"},
 		{"absent", "", "", "prepare"},
 		{"build or install failure", "running", "prepare", "prepare"},
-		{"stop failure", "running", "stop", "prepare,stop"},
-		{"resume failure", "running", "start", "prepare,stop,start"},
+		{"resume failure", "running", "start", "prepare,start"},
 		{"paused", "paused", "paused", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,7 +38,7 @@ func TestUpdateWorkspacePreservesLifecycleAndFailures(t *testing.T) {
 					return nil
 				}
 			}
-			err := updateWorkspace(tc.state, step("prepare"), step("stop"), step("start"))
+			err := updateWorkspace(tc.state, step("prepare"), step("start"))
 			if got := strings.Join(calls, ","); got != tc.want {
 				t.Fatalf("lifecycle: %s; want %s", got, tc.want)
 			}
@@ -186,4 +185,38 @@ func TestInstallCommandWorker(t *testing.T) {
 	}
 	io.WriteString(os.Stdout, "ready\n")
 	io.Copy(io.Discard, os.Stdin)
+}
+
+func TestUpdateRejectsLocalChangesAndUnfinishedReplacementBeforePull(t *testing.T) {
+	for _, scenario := range []string{"tracked changes", "untracked files", "pending replacement"} {
+		t.Run(scenario, func(t *testing.T) {
+			platform, _, state := oldInstallFixture(t)
+			before := legacyGit(t, platform, "rev-parse", "HEAD")
+			path := filepath.Join(platform, "go.mod")
+			want := "локальные изменения"
+			if scenario == "untracked files" {
+				path = filepath.Join(platform, "local-notes.txt")
+			}
+			if scenario == "pending replacement" {
+				path = filepath.Join(state, "workspace-replacement.json")
+				want = "adc workspace start"
+				if err := os.MkdirAll(state, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(path, []byte("keep this local file"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			err := (&App{Platform: platform, State: state}).Update()
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatal(err)
+			}
+			if legacyGit(t, platform, "rev-parse", "HEAD") != before {
+				t.Fatal("changed HEAD before preflight")
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != "keep this local file" {
+				t.Fatal("local data changed", err)
+			}
+		})
+	}
 }

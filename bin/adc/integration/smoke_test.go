@@ -92,6 +92,13 @@ func TestDockerWorkspace(t *testing.T) {
 			data, _ := cmd.CombinedOutput()
 			t.Logf("runtime logs:\n%s", data)
 		}
+		// An interrupted handoff deliberately retains its previous container.
+		// Remove only this fixture's backups before removing its named volumes.
+		if data, err := exec.Command("docker", "container", "ls", "--all", "--filter", "name=^/"+container+"-previous-", "--format", "{{.ID}}").Output(); err == nil {
+			if ids := strings.Fields(string(data)); len(ids) > 0 {
+				_ = exec.Command("docker", append([]string{"rm", "-f"}, ids...)...).Run()
+			}
+		}
 		for _, args := range [][]string{{"rm", "-f", container}, {"volume", "rm", container + "-home", container + "-tools", container + "-worktrees"}} {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			cmd := exec.CommandContext(ctx, "docker", args...)
@@ -559,6 +566,47 @@ echo ADC_SANDBOX_READ_WRITE_OK
 	assertContains(adc("workspace", "status"), "running (готов)")
 	execNode("test", "-f", filepath.Join(worktree, "AGENTS.platform.md"))
 	assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
+	if _, err := os.Stat(filepath.Join(os.Getenv("ADC_HOME"), "workspace-replacement.json")); !os.IsNotExist(err) {
+		t.Fatal("successful update retained a replacement journal", err)
+	}
+	t.Run("update failure and interrupted replacement", func(t *testing.T) {
+		proxy, realDocker := dockerUpdateFailureProxy(t, tmp)
+		marker := filepath.Join(tmp, "docker-failure-mode")
+		t.Setenv("ADC_SMOKE_REAL_DOCKER", realDocker)
+		t.Setenv("ADC_SMOKE_DOCKER_FAILURE", marker)
+		t.Setenv("PATH", proxy+string(os.PathListSeparator)+os.Getenv("PATH"))
+		previous := strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container))
+		write(marker, "run")
+		if err := updated.ApplyUpdate(func() error { return nil }); err == nil || !strings.Contains(err.Error(), "прежний контейнер восстановлен") {
+			t.Fatalf("creation failure did not restore previous runtime: %v", err)
+		}
+		if current := strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container)); current != previous {
+			t.Fatal("restoration recreated rather than recovered previous container")
+		}
+		adc("workspace", "start")
+		assertContains(adc("workspace", "status"), "running (готов)")
+		assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
+		// Force replacement without changing the developer's source checkout.
+		write(filepath.Join(os.Getenv("ADC_HOME"), "container-key"), "ADC_SMOKE_STALE_KEY")
+		write(marker, "rename")
+		cmd := exec.Command(cli, "workspace", "start")
+		if data, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(data), "ADC_SMOKE_LOST_RENAME_RESPONSE") {
+			t.Fatalf("did not interrupt container handoff: %v %s", err, data)
+		}
+		journal := filepath.Join(os.Getenv("ADC_HOME"), "workspace-replacement.json")
+		if _, err := os.Stat(journal); err != nil {
+			t.Fatal("interrupted handoff lost its journal", err)
+		}
+		adc("workspace", "start")
+		assertContains(adc("workspace", "status"), "running (готов)")
+		assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
+		if _, err := os.Stat(journal); !os.IsNotExist(err) {
+			t.Fatal("resumed handoff retained its journal", err)
+		}
+		if backups := docker("container", "ls", "--all", "--filter", "name=^/"+container+"-previous-", "--format", "{{.Names}}"); strings.TrimSpace(backups) != "" {
+			t.Fatalf("previous containers leaked: %s", backups)
+		}
+	})
 	adc("workspace", "stop")
 	if err := updated.ApplyUpdate(func() error { return nil }); err != nil {
 		t.Fatal(err)

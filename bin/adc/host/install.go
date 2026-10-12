@@ -2,7 +2,6 @@ package host
 
 import (
 	"archive/zip"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -357,25 +356,15 @@ func (a *App) InstallShell(root *cobra.Command) error {
 		return e
 	}
 	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
-		var buf bytes.Buffer
-		switch shell {
-		case "bash":
-			e = root.GenBashCompletionV2(&buf, true)
-		case "zsh":
-			e = root.GenZshCompletion(&buf)
-		case "fish":
-			e = root.GenFishCompletion(&buf, true)
-		case "powershell":
-			e = root.GenPowerShellCompletionWithDesc(&buf)
+		data, err := shared.CompletionScript(root, shell, true)
+		if err != nil {
+			return err
 		}
-		if e != nil {
-			return e
-		}
-		if e = shared.AtomicWrite(filepath.Join(comp, "adc."+shell), buf.Bytes(), 0644); e != nil {
+		if e = shared.AtomicWrite(filepath.Join(comp, shared.CompletionFilename(shell)), data, 0644); e != nil {
 			return e
 		}
 	}
-	psBody := "$env:ADC_HOME='" + strings.ReplaceAll(a.State, "'", "''") + "'\n$env:AI_DEVCONTAINER_HOME='" + strings.ReplaceAll(a.Platform, "'", "''") + "'\n. '" + strings.ReplaceAll(filepath.Join(comp, "adc.powershell"), "'", "''") + "'"
+	psBody := "$env:ADC_HOME='" + strings.ReplaceAll(a.State, "'", "''") + "'\n$env:AI_DEVCONTAINER_HOME='" + strings.ReplaceAll(a.Platform, "'", "''") + "'\n. '" + strings.ReplaceAll(filepath.Join(comp, shared.CompletionFilename("powershell")), "'", "''") + "'"
 	psInstalled := false
 	for _, command := range []string{"powershell", "pwsh"} {
 		if _, err := exec.LookPath(command); err != nil {
@@ -420,7 +409,11 @@ func (a *App) InstallShell(root *cobra.Command) error {
 	if e = shared.ManagedBlock(filepath.Join(zdir, ".zshrc"), "# adc:start", "# adc:end", zbody); e != nil {
 		return e
 	}
-	fish := filepath.Join(home, ".config", "fish")
+	fishCompletion, e := a.shared().CompletionPath("fish")
+	if e != nil {
+		return e
+	}
+	fish := filepath.Dir(filepath.Dir(fishCompletion))
 	if e = shared.AtomicWrite(filepath.Join(fish, "conf.d", "adc.fish"), []byte("fish_add_path "+shared.ShellQuote(bin)+"\nset -gx AI_DEVCONTAINER_HOME "+shared.ShellQuote(a.Platform)+"\nset -gx ADC_HOME "+shared.ShellQuote(a.State)+"\n"), 0644); e != nil {
 		return e
 	}
@@ -428,5 +421,5 @@ func (a *App) InstallShell(root *cobra.Command) error {
 	if e != nil {
 		return e
 	}
-	return shared.AtomicWrite(filepath.Join(fish, "completions", "adc.fish"), b, 0644)
+	return shared.AtomicWrite(fishCompletion, b, 0644)
 }

@@ -104,7 +104,9 @@ func waitWorkspace(ctx context.Context, poll func(context.Context) (workspaceSta
 	}
 }
 
-func (a *App) waitForWorkspace(c shared.Config) error {
+// Ctrl+C ends the wait, but does not prove readiness. Container replacement
+// must retain its recovery journal and previous container until ready is seen.
+func (a *App) waitForWorkspaceReady(c shared.Config) (bool, error) {
 	container := a.shared().Container(c)
 	fmt.Printf("Контейнер %s работает в фоне. Подготовка может занять несколько минут.\n", container)
 	fmt.Println("Команда вернёт консоль после подготовки. Ctrl+C прекращает только ожидание; контейнер продолжит работу.")
@@ -115,14 +117,14 @@ func (a *App) waitForWorkspace(c shared.Config) error {
 	err := waitWorkspace(ctx, func(ctx context.Context) (workspaceStartup, error) { return dockerStartup(ctx, container) }, os.Stdout, time.Second, 15*time.Second)
 	if errors.Is(err, context.Canceled) {
 		fmt.Println("Ожидание прервано. Контейнер продолжает работу; состояние: adc workspace status; прогресс: adc workspace logs.")
-		return nil
+		return false, nil
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return errors.New("подготовка продолжается в фоне; adc workspace status покажет этап, adc workspace start повторно дождётся готовности")
+		return false, errors.New("подготовка продолжается в фоне; adc workspace status покажет этап, adc workspace start повторно дождётся готовности")
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	fmt.Printf("Готово. Workspace работает в фоне; консоль свободна. Orca → Add Server → 127.0.0.1:%d. Pairing: adc orca pairing --help\n", c.Port)
-	return nil
+	return true, nil
 }

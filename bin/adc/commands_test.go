@@ -8,7 +8,7 @@ import (
 
 func TestCommandHelpAndCompletion(t *testing.T) {
 	t.Setenv("ADC_RUNTIME", "0")
-	for _, args := range [][]string{{"--help"}, {"project", "add", "--help"}, {"skill", "fork", "--help"}, {"mcp", "add", "--help"}, {"mcp", "list", "--help"}, {"mcp", "doctor", "--help"}, {"plans", "--help"}, {"tools", "--help"}, {"tools", "graphify", "--help"}, {"tools", "install", "--help"}, {"tools", "claude-snapshot", "--help"}, {"tools", "pnpm-patch-dep", "--help"}, {"completion", "bash"}, {"completion", "zsh"}, {"completion", "fish"}, {"completion", "powershell"}} {
+	for _, args := range [][]string{{"--help"}, {"project", "add", "--help"}, {"skill", "fork", "--help"}, {"mcp", "add", "--help"}, {"mcp", "list", "--help"}, {"mcp", "doctor", "--help"}, {"plans", "--help"}, {"tools", "--help"}, {"tools", "graphify", "--help"}, {"tools", "install", "--help"}, {"tools", "claude-snapshot", "--help"}, {"tools", "pnpm-patch-dep", "--help"}, {"completion", "bash", "--stdout"}, {"completion", "zsh", "--stdout"}, {"completion", "fish", "--stdout"}, {"completion", "powershell", "--stdout"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var buf bytes.Buffer
 			cmd := commandTree()

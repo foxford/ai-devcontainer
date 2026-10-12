@@ -2,9 +2,6 @@ package host
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
@@ -77,10 +74,17 @@ func (a *App) Workspace(args []string) error {
 		if e = a.shared().RequireHost(); e != nil {
 			return e
 		}
-		return shared.Run("", "docker", "stop", a.shared().Container(c))
+		return a.shared().LockedFile("lifecycle.lockfile", func() error {
+			return shared.Run("", "docker", "stop", a.shared().Container(c))
+		})
 	case "status":
 		if e = a.shared().RequireHost(); e != nil {
 			return e
+		}
+		if pending, err := a.readReplacement(c); err != nil {
+			return err
+		} else if pending != nil {
+			fmt.Println("Переключение контейнера не завершено; резервное имя:", pending.Backup, "; продолжить: adc workspace start")
 		}
 		state, err := dockerStartup(context.Background(), a.shared().Container(c))
 		if err != nil {
@@ -152,69 +156,65 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 	return args, nil
 }
 func (a *App) EnsureImage() error {
-	if _, e := shared.Output("", "docker", "info", "--format", "{{.OSType}}"); e != nil {
-		return fmt.Errorf("Docker недоступен; adc install: %w", e)
-	}
-	return shared.Run("", "docker", "build", "--builder", "default", "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "--build-arg", "ADC_REVISION="+shared.SourceRevision(a.Platform), "-t", "adc-runtime:local", a.Platform)
-}
-func (a *App) Start(c shared.Config) error {
-	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {
-		return errors.New("миграция не завершена: adc migrate legacy finish; запуск среды заблокирован")
-	}
-	if e := a.EnsureImage(); e != nil {
-		return e
-	}
-	return a.startPreparedImage(c)
+	// Legacy import may already hold write.lockfile. Keep this build helper free
+	// of host lifecycle locks; Update and Start acquire their locks explicitly.
+	_, err := a.ensureImage()
+	return err
 }
 
-func (a *App) startPreparedImage(c shared.Config) error {
+func (a *App) ensureImage() (string, error) {
+	if _, e := shared.Output("", "docker", "info", "--format", "{{.OSType}}"); e != nil {
+		return "", fmt.Errorf("Docker недоступен; adc install: %w", e)
+	}
+	if err := os.MkdirAll(a.State, 0700); err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp(a.State, ".adc-image-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(file.Name())
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	// BuildKit writes the ID of this build even if another ADC installation
+	// changes the shared local tag before container creation.
+	if err := shared.Run("", "docker", "build", "--builder", "default", "--iidfile", file.Name(), "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "--build-arg", "ADC_REVISION="+shared.SourceRevision(a.Platform), "-t", "adc-runtime:local", a.Platform); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(file.Name())
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+func (a *App) Start(c shared.Config) error {
+	return a.shared().LockedFile("update.lockfile", func() error {
+		return a.shared().LockedFile("lifecycle.lockfile", func() error {
+			if err := a.checkMigration(); err != nil {
+				return err
+			}
+			if resumed, err := a.resumeReplacement(c, realDocker(), a.replacementWait(c)); resumed || err != nil {
+				return err
+			}
+			image, err := a.ensureImage()
+			if err != nil {
+				return err
+			}
+			prepared, err := a.prepareWorkspace(c, image)
+			if err != nil {
+				return err
+			}
+			return a.launchWorkspace(prepared, realDocker(), a.replacementWait(c))
+		})
+	})
+}
+
+func (a *App) checkMigration() error {
 	if _, err := os.Stat(filepath.Join(a.State, "migration-pending.json")); !os.IsNotExist(err) {
 		return errors.New("миграция не завершена: adc migrate legacy finish; запуск среды заблокирован")
 	}
-	if err := a.prepareDockerSecurity(); err != nil {
-		return fmt.Errorf("подготовка Docker seccomp: %w", err)
-	}
-	args, e := a.DockerArgs(c)
-	if e != nil {
-		return e
-	}
-	profile, e := a.prepareDockerAppArmor()
-	if e != nil {
-		return fmt.Errorf("подготовка Docker AppArmor: %w", e)
-	}
-	if profile != "" {
-		// DockerArgs ends with the image. Include the profile in container-key.
-		args = append(args[:len(args)-1], "--security-opt", "apparmor="+profile, args[len(args)-1])
-	}
-	b, _ := json.Marshal(args)
-	h := sha256.Sum256(b)
-	image, e := shared.Output("", "docker", "image", "inspect", "--format", "{{.Id}}", "adc-runtime:local")
-	if e != nil {
-		return e
-	}
-	desired := hex.EncodeToString(h[:]) + image
-	recorded, _ := os.ReadFile(filepath.Join(a.State, "container-key"))
-	status, e := shared.Output("", "docker", "inspect", "--format", "{{.State.Status}}", a.shared().Container(c))
-	if e == nil && string(recorded) == desired {
-		if status != "running" {
-			if e = shared.Run("", "docker", "start", a.shared().Container(c)); e != nil {
-				return e
-			}
-		}
-	} else {
-		if e == nil {
-			if e = shared.Run("", "docker", "rm", "-f", a.shared().Container(c)); e != nil {
-				return e
-			}
-		}
-		if e = shared.Run("", "docker", args...); e != nil {
-			return e
-		}
-		if e = shared.AtomicWrite(filepath.Join(a.State, "container-key"), []byte(desired), 0600); e != nil {
-			return e
-		}
-	}
-	return a.waitForWorkspace(c)
+	return nil
 }
 func (a *App) Exec(dir string, argv []string, tty bool) error {
 	if e := a.shared().RequireHost(); e != nil {
