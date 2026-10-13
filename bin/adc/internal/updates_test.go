@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -103,6 +104,94 @@ func TestCheckUpdatesUsesSeparateCacheAndReportsComponents(t *testing.T) {
 	status, err = a.CheckUpdates(ctx, false)
 	if err != nil || status.Available || len(status.Changes) != 0 || !status.Cached {
 		t.Fatalf("already applied update still offered: %+v %v", status, err)
+	}
+}
+
+func TestUpdateSourceUsesPublicHTTPSWithoutChangingCheckout(t *testing.T) {
+	for _, remote := range []string{
+		"git@github.com:foxford/ai-devcontainer.git",
+		"git@github.com:foxford/ai-devcontainer",
+		"ssh://git@github.com/foxford/ai-devcontainer.git",
+		"ssh://git@github.com:22/foxford/ai-devcontainer.git",
+		publicUpdateRemote,
+	} {
+		t.Run(remote, func(t *testing.T) {
+			a, _ := updateFixture(t)
+			updatesGit(t, a.Platform, "remote", "set-url", "origin", remote)
+			before := updatesGit(t, a.Platform, "rev-parse", "HEAD")
+			source, err := a.updateSource(context.Background())
+			if err != nil || source.remote != publicUpdateRemote || source.ref != "refs/heads/main" {
+				t.Fatalf("public check still needs SSH: %+v %v", source, err)
+			}
+			if updatesGit(t, a.Platform, "remote", "get-url", "origin") != remote || updatesGit(t, a.Platform, "rev-parse", "HEAD") != before || updatesGit(t, a.Platform, "status", "--porcelain") != "" {
+				t.Fatal("checking the public source changed the checkout")
+			}
+		})
+	}
+}
+
+func TestUpdateReadRemotePreservesOtherRepositories(t *testing.T) {
+	for _, remote := range []string{
+		"git@github.com:private-owner/ai-devcontainer.git",
+		"ssh://git@git.example.com/foxford/ai-devcontainer.git",
+		"ssh://git@github.com:2222/foxford/ai-devcontainer.git",
+		"git@github-work:foxford/ai-devcontainer.git",
+		"ssh://other@github.com/foxford/ai-devcontainer.git",
+		"ssh://git:password@github.com/foxford/ai-devcontainer.git",
+		"git@github.com.evil:foxford/ai-devcontainer.git",
+		"ssh://git@github.com/foxford/ai-devcontainer.git?other=1",
+		"ssh://git@github.com/foxford/ai-devcontainer.git#other",
+		"https://git.example.com/foxford/ai-devcontainer.git",
+		"file:///tmp/platform", "/tmp/platform", "../platform", ".",
+	} {
+		if got := updateReadRemote(remote); got != remote {
+			t.Errorf("changed an unrelated remote: %q -> %q", remote, got)
+		}
+	}
+}
+
+func TestUpdatePublicHTTPSOverridesUserSSHRewrite(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "gitconfig")
+	updatesGit(t, root, "config", "--file", config, "url.git@github.com:.insteadOf", "https://github.com/")
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", config)
+	before, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ remote, want string }{
+		{publicUpdateRemote, publicUpdateRemote},
+		{"https://github.com/private-owner/platform.git", "git@github.com:private-owner/platform.git"},
+	} {
+		got, err := updateGit(context.Background(), root, "ls-remote", "--get-url", tc.remote)
+		if err != nil || got != tc.want {
+			t.Fatalf("unexpected effective transport for %q: %q %v", tc.remote, got, err)
+		}
+	}
+	after, err := os.ReadFile(config)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("changed the user's Git configuration", err)
+	}
+}
+
+func TestUpdateHTTPSDiscardsCachedSSHFailure(t *testing.T) {
+	a, _ := updateFixture(t)
+	remote := "git@github.com:foxford/ai-devcontainer.git"
+	updatesGit(t, a.Platform, "remote", "set-url", "origin", remote)
+	old := updateCache{Version: 1, Source: remote + "\nrefs/heads/main", AttemptedAt: time.Now().UTC(), Error: "context deadline exceeded"}
+	data, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatesWrite(t, a.State, "cache/updates/status.json", string(data))
+	source, err := a.updateSource(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached, _ := a.readUpdateCache(source)
+	if cached.Error != "" || updateCacheFresh(cached, time.Now()) {
+		t.Fatalf("old SSH failure still blocks HTTPS: %+v", cached)
 	}
 }
 

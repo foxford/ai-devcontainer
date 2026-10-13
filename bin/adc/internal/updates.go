@@ -18,6 +18,7 @@ import (
 
 const updateCheckTTL = 24 * time.Hour
 const updateFailureTTL = time.Hour
+const publicUpdateRemote = "https://github.com/foxford/ai-devcontainer.git"
 
 // UpdateStatus compares explicit unit versions in the platform and its remote.
 type UpdateStatus struct {
@@ -51,6 +52,9 @@ func updateGit(ctx context.Context, dir string, args ...string) (string, error) 
 }
 
 func updateGitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	// A broad user insteadOf rule may otherwise turn our public HTTPS read
+	// back into SSH. Override only this exact repository, for this command.
+	args = append([]string{"-c", "url." + publicUpdateRemote + ".insteadOf=" + publicUpdateRemote}, args...)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	// Remote inspection never prompts, executes repository hooks or inherits
@@ -93,7 +97,22 @@ func (a *App) updateSource(ctx context.Context) (updateSource, error) {
 	if !PortableAbs(source.remote) && !strings.Contains(source.remote, ":") {
 		source.remote = filepath.Join(a.Platform, source.remote)
 	}
+	source.remote = updateReadRemote(source.remote)
 	return source, nil
+}
+
+func updateReadRemote(remote string) string {
+	// The official platform is public. Reading its versions must also work
+	// inside a runtime without the host's SSH keys or known_hosts. Keep other
+	// remotes (including private forks) and the checkout's Git config intact.
+	switch strings.TrimSuffix(remote, ".git") {
+	case "git@github.com:foxford/ai-devcontainer",
+		"ssh://git@github.com/foxford/ai-devcontainer",
+		"ssh://git@github.com:22/foxford/ai-devcontainer":
+		return publicUpdateRemote
+	default:
+		return remote
+	}
 }
 
 func (a *App) readUpdateCache(source updateSource) (updateCache, string) {
