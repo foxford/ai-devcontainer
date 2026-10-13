@@ -13,6 +13,7 @@
 | [design-taste-frontend](design-taste-frontend/SKILL.md) | [Leonxlnx/taste-skill/skills/taste-skill/SKILL.md](https://github.com/Leonxlnx/taste-skill/blob/HEAD/skills/taste-skill/SKILL.md) | Рамка платформы и description |
 | [humanizer](humanizer/SKILL.md) | [ilyautov/humanizer-ru 3.31.4](https://github.com/ilyautov/humanizer-ru/tree/8c337c3567096758433c475f1d60f2543f6bc94f/skills/humanizer-ru) | Полный skill, сканер и MCP; рамка ADC, жанры, контекстное тире, сохранение смысла. [Происхождение и поправки](humanizer/PROVENANCE.md) |
 | [playwright-pro](playwright-pro/SKILL.md) | [alirezarezvani/claude-skills/engineering-team/playwright-pro/skills/pw/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering-team/playwright-pro/skills/pw/SKILL.md) |  |
+| [readme-writer](readme-writer/SKILL.md) | [NASA-AMMOS/slim — slim-readme](https://github.com/NASA-AMMOS/slim/tree/46138b07c80798b3b80ec13feca6782e4b84870e/static/marketplace/skills/slim-readme) | Полные SKILL.md и assets/README.md, LICENSE с уведомлениями Caltech/JPL; имя и рамка ADC: существующий README, факты, стек проекта и выбор разделов. Версия доставки 1.0.0 |
 | [redesign-existing-projects](redesign-existing-projects/SKILL.md) | [Leonxlnx/taste-skill/skills/redesign-skill/SKILL.md](https://github.com/Leonxlnx/taste-skill/blob/HEAD/skills/redesign-skill/SKILL.md) | Рамка платформы и description |
 | [senior-architect](senior-architect/SKILL.md) | [alirezarezvani/claude-skills/engineering-team/skills/senior-architect/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering-team/skills/senior-architect/SKILL.md) |  |
 | [senior-backend](senior-backend/SKILL.md) | [alirezarezvani/claude-skills/engineering-team/skills/senior-backend/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering-team/skills/senior-backend/SKILL.md) |  |
@@ -36,6 +37,7 @@
 | `design-taste-frontend` | `6d838b246d0e35d0b53f4f23f98ba7a1dd561937e64f7d0c7553b0928e376c3e` |
 | `humanizer` | `9f538eee440359aa11f1cf4b751a0e60662954f57b042112d8fcbcb522b1bb8f` |
 | `playwright-pro` | `65857406b8b8b6ce1a5237484d287e9b63d6fad4a0484464b325725cbb8a2423` |
+| `readme-writer` | `1bdc8bd0fdece2c9e1a5c3604c5b5902a349844b05c27ffe7c7180de91d48fb4` |
 | `redesign-existing-projects` | `b405eee0e0e80fc243f731d9aa368bca307e356db7e6157d27101d369dac6726` |
 | `senior-architect` | `0152c1cb90512177153d936557a11bf760d5cbd21470a1305cc727d0a3af1df9` |
 | `senior-backend` | `45228f6f893be2bbfcea6be09a7f3fb847635e828a31860a4fd810dbdd26ec0d` |
