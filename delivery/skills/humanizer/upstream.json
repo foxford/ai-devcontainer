@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/ilyautov/humanizer-ru",
+  "commit": "8c337c3567096758433c475f1d60f2543f6bc94f",
+  "version": "3.31.4",
+  "source_directory": "skills/humanizer-ru",
+  "sha256": {
+    "SKILL.md": "9f538eee440359aa11f1cf4b751a0e60662954f57b042112d8fcbcb522b1bb8f",
+    "agents/openai.yaml": "447d048ecffc8e37bccb6bb411035effccd26e34e9512fcf21d3955c507f7442",
+    "edit-log.md": "1ab7758e4abd09be3163e228ec7ce34b333521c9b219aaba027ff39fce8a533d",
+    "references/audit.md": "d14d952bcccbe5412a52f652917f86b2462209ac1923d9b0ff4ea0a62a72e955",
+    "references/catalog.md": "532823572da16ccb41c8001c7870ec179716f2493782c9d9f304f00bf3c38e4b",
+    "references/review.md": "a1b9fe15bb2c4a34629896f0ade704724590ffcaf8a83b64657ef2c19abfb9a3",
+    "scripts/humanizer_metrics/__init__.py": "dc22085978c29c78b3a58b1d95d84464db3433bffcc17ecd5751dcce73286096",
+    "scripts/humanizer_metrics/burstiness.py": "a4a6f4880df7385caafcfe024af470520124f66c9878b25412aa97929e6a0196",
+    "scripts/humanizer_metrics/facts.py": "56a0eb61dada486fe73ac45d36b30eaea6a3822e8cf61be4da3419906e248ba0",
+    "scripts/humanizer_metrics/lexical.py": "5c5e929989f2ac13109d96eb054413df6fa5ed10499796bce14f4194208b7eb0",
+    "scripts/humanizer_metrics/markdown.py": "e09fc1946b16297452b8402efd07bb2e294d28c24e53221a272cf5df50799540",
+    "scripts/humanizer_metrics/markers.py": "21218f9cb0cb18f1190fc7e103ea82c3608740d95e043d332f6dd564983d8959",
+    "scripts/humanizer_metrics/mcp_server.py": "b21b219d1d8f76c93ad797e4a2197b85eaac59f617924e53ac144dbd43b048bb",
+    "scripts/humanizer_metrics/morphology.py": "daee63ed2670fe2771330f747b5a8a1b184930be6ebc03ad76a56a55dc1138e3",
+    "scripts/humanizer_metrics/repeats.py": "84d50c06d80b702ef9b3bb17d0a1a9684609f03f774ed0c2e43fe9a465de3eef",
+    "scripts/humanizer_metrics/score.py": "002e03445f895d38ff8af9d76808e6d407dd49be85a6ccc559c3566760c6c749",
+    "scripts/humanizer_metrics/structure.py": "96431de579d70f26c89aa0493e88de2a9a29d371ebce2c3b86855af74a5a0da5",
+    "scripts/scan.py": "aae326eab9d4165426443e88558bb9a28040aa7a5971b019fe420c5c79d466f9"
+  }
+}

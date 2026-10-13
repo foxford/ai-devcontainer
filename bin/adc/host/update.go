@@ -109,6 +109,7 @@ func (a *App) update() error {
 	if status != "" {
 		return fmt.Errorf("платформа содержит локальные изменения; сохраните их перед adc update; файлы не изменены")
 	}
+	before, versionsErr := a.shared().DeliveryVersions()
 	if err := shared.Run("", "git", "-C", a.Platform, "pull", "--ff-only"); err != nil {
 		return err
 	}
@@ -149,7 +150,17 @@ func (a *App) update() error {
 	apply := exec.Command(helper, "bootstrap-apply-update")
 	apply.Dir, apply.Env = a.Platform, env
 	apply.Stdin, apply.Stdout, apply.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return apply.Run()
+	if err = apply.Run(); err != nil {
+		return err
+	}
+	if versionsErr == nil {
+		if after, err := a.shared().DeliveryVersions(); err == nil {
+			if changes := shared.DiffDeliveryVersions(before, after); len(changes) > 0 {
+				return shared.WriteDeliveryChanges(os.Stdout, "ADC: платформа обновлена", changes, shared.ColorEnabled(os.Stdout), true)
+			}
+		}
+	}
+	return nil
 }
 
 func installCommandFile(path string, data []byte) error {

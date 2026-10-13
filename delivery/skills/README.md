@@ -11,7 +11,7 @@
 | [brandkit](brandkit/SKILL.md) | [Leonxlnx/taste-skill/skills/brandkit/SKILL.md](https://github.com/Leonxlnx/taste-skill/blob/HEAD/skills/brandkit/SKILL.md) |  |
 | [dependency-auditor](dependency-auditor/SKILL.md) | [alirezarezvani/claude-skills/engineering/skills/dependency-auditor/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering/skills/dependency-auditor/SKILL.md) |  |
 | [design-taste-frontend](design-taste-frontend/SKILL.md) | [Leonxlnx/taste-skill/skills/taste-skill/SKILL.md](https://github.com/Leonxlnx/taste-skill/blob/HEAD/skills/taste-skill/SKILL.md) | Рамка платформы и description |
-| [humanizer](humanizer/SKILL.md) | [blader/humanizer/SKILL.md](https://github.com/blader/humanizer/blob/HEAD/SKILL.md) |  |
+| [humanizer](humanizer/SKILL.md) | [ilyautov/humanizer-ru 3.31.4](https://github.com/ilyautov/humanizer-ru/tree/8c337c3567096758433c475f1d60f2543f6bc94f/skills/humanizer-ru) | Полный skill, сканер и MCP; рамка ADC, жанры, контекстное тире, сохранение смысла. [Происхождение и поправки](humanizer/PROVENANCE.md) |
 | [playwright-pro](playwright-pro/SKILL.md) | [alirezarezvani/claude-skills/engineering-team/playwright-pro/skills/pw/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering-team/playwright-pro/skills/pw/SKILL.md) |  |
 | [redesign-existing-projects](redesign-existing-projects/SKILL.md) | [Leonxlnx/taste-skill/skills/redesign-skill/SKILL.md](https://github.com/Leonxlnx/taste-skill/blob/HEAD/skills/redesign-skill/SKILL.md) | Рамка платформы и description |
 | [senior-architect](senior-architect/SKILL.md) | [alirezarezvani/claude-skills/engineering-team/skills/senior-architect/SKILL.md](https://github.com/alirezarezvani/claude-skills/blob/HEAD/engineering-team/skills/senior-architect/SKILL.md) |  |
@@ -34,7 +34,7 @@
 | `brandkit` | `b63012f3c3d21197e0185d3e9cc7ec40c589fb10e0b5a32a561739de31aa3f20` |
 | `dependency-auditor` | `a31ab1d908eb2780729b717f9c9d937aae6afc19d18b6409cae7ba0203582747` |
 | `design-taste-frontend` | `6d838b246d0e35d0b53f4f23f98ba7a1dd561937e64f7d0c7553b0928e376c3e` |
-| `humanizer` | `b8ffeef32edeeb4adf4e1598cbc1be5c2f2cb32b377739a813bb27ba6824b28c` |
+| `humanizer` | `9f538eee440359aa11f1cf4b751a0e60662954f57b042112d8fcbcb522b1bb8f` |
 | `playwright-pro` | `65857406b8b8b6ce1a5237484d287e9b63d6fad4a0484464b325725cbb8a2423` |
 | `redesign-existing-projects` | `b405eee0e0e80fc243f731d9aa368bca307e356db7e6157d27101d369dac6726` |
 | `senior-architect` | `0152c1cb90512177153d936557a11bf760d5cbd21470a1305cc727d0a3af1df9` |

@@ -69,6 +69,9 @@ func (a *App) Workspace(args []string) error {
 		if e = a.shared().RequireHost(); e != nil {
 			return e
 		}
+		if shared.IsTerminalOutput(os.Stdout) {
+			a.shared().ShowUpdateNotice(os.Stdout)
+		}
 		return a.Start(c)
 	case "stop":
 		if e = a.shared().RequireHost(); e != nil {
@@ -98,6 +101,9 @@ func (a *App) Workspace(args []string) error {
 		}
 		return shared.Run("", "docker", "logs", "--tail", "100", a.shared().Container(c))
 	case "shell":
+		if shared.IsTerminalOutput(os.Stdout) {
+			a.shared().ShowUpdateNotice(os.Stdout)
+		}
 		dir := "/workspace"
 		if len(args) > 1 {
 			p, e := a.shared().Project(c, args[1])

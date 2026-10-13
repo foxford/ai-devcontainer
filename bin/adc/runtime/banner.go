@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
 
 func checkoutRoot(dir string) string {
@@ -26,6 +28,11 @@ func Banner(dir, workspace string, out io.Writer) error {
 		workspace = "developer"
 	}
 	fmt.Fprintf(out, "🤖 ADC · %s\n\n", workspace)
+	if shared.IsTerminalOutput(out) {
+		if context, err := shared.New(); err == nil {
+			context.ShowUpdateNotice(out)
+		}
+	}
 	fmt.Fprintln(out, "  Агенты     claude · codex · opencode · hermes · dsh\n  Проекты    adc project list · adc workspace map\n  Контекст   adc sync · adc doctor\n  Скиллы     adc skill list · adc skill status\n  MCP        adc mcp list · adc mcp enable <имя>\n  Задачи     adc task --help · adc plans --help\n  Инструменты adc tools --help · adc omniroute --help")
 	root := checkoutRoot(dir)
 	if root != "" {

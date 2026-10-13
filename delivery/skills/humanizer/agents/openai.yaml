@@ -1,0 +1,6 @@
+interface:
+  display_name: "Humanizer: русский текст"
+  short_description: "Редактура русского текста с сохранением смысла и голоса"
+  default_prompt: "Используй $humanizer, чтобы отредактировать этот русский текст, сохранив факты, жанр и голос автора."
+policy:
+  allow_implicit_invocation: true

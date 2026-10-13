@@ -179,6 +179,7 @@ func commandTree() *cobra.Command {
 			command.AddCommand(check)
 		}
 	}
+	updateCommands(root)
 	internal := leaf(root, "runtime-init", "Подготовить runtime перед Orca", cobra.NoArgs, "runtime-init")
 	internal.Hidden = true
 	serve := leaf(root, "runtime-serve", "Запустить сервер общей среды", cobra.NoArgs, "runtime-serve")

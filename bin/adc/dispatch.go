@@ -48,10 +48,7 @@ func dispatch(args []string) error {
 	case "project":
 		if len(args) >= 3 && args[1] == "capability" {
 			if args[2] == "list" {
-				info, _ := os.Stdout.Stat()
-				_, noColor := os.LookupEnv("NO_COLOR")
-				color := info != nil && info.Mode()&os.ModeCharDevice != 0 && !noColor && os.Getenv("TERM") != "dumb"
-				return ctx.WriteCapabilities(wd, os.Stdout, color)
+				return ctx.WriteCapabilities(wd, os.Stdout, shared.ColorEnabled(os.Stdout))
 			}
 			if !ctx.Runtime && args[2] == "add" {
 				if _, err := ctx.ChangeCapabilities(wd, args[2], args[3:]); err != nil {
