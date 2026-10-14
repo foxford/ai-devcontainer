@@ -16,7 +16,73 @@ import (
 	"github.com/foxford/ai-devcontainer/bin/adc/host"
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
+	runtimeapp "github.com/foxford/ai-devcontainer/bin/adc/runtime"
 )
+
+func writeDeliveryUpdateFixture(t *testing.T, platform, version string) {
+	t.Helper()
+	write := func(path, value string) {
+		t.Helper()
+		if err := shared.AtomicWrite(filepath.Join(platform, path), []byte(value), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("delivery/catalog.json", `{"version":1,"base":{"instructions":["instructions/AGENTS.platform.md"],"skills":"skills","mcp":{"source":"mcp.json","servers":[]},"documents":[{"source":"documents/linked.md","target":"GUIDE-LINK.md","mode":"link"},{"source":"documents/copied.md","target":"GUIDE-COPY.md","mode":"copy"},{"source":"documents/copied.md","target":"USER-GUIDE.md","mode":"copy"},{"source":"mcp/secrets.env.example","target":".agents/mcp.secrets.env.example","mode":"link"}]},"capabilities":{}}`)
+	write("delivery/mcp.json", `{"mcpServers":{}}`)
+	// MCP delivery initializes the private env file even with no servers selected.
+	write("delivery/mcp/secrets.env.example", "# Integration fixture: no MCP credentials required.\n")
+	write("delivery/mcp/secrets.env.example.meta.json", `{"kind":"document","name":"mcp-secrets-example","version":"1.0.0"}`)
+	write("delivery/instructions/AGENTS.platform.md", "Contract "+version+"\n")
+	write("delivery/instructions/AGENTS.platform.md.meta.json", fmt.Sprintf(`{"kind":"document","name":"platform-rules","version":%q}`, version))
+	for _, document := range []string{"linked", "copied"} {
+		write("delivery/documents/"+document+".md", "Document "+version+"\n")
+		write("delivery/documents/"+document+".md.meta.json", fmt.Sprintf(`{"kind":"document","name":%q,"version":%q}`, document, version))
+	}
+	for _, skill := range []string{"demo", "forked"} {
+		write("delivery/skills/"+skill+"/SKILL.md", "---\nname: "+skill+"\ndescription: Integration fixture.\n---\n\nStock "+version+"\n")
+		write("delivery/skills/"+skill+"/meta.json", fmt.Sprintf(`{"kind":"skill","name":%q,"version":%q}`, skill, version))
+	}
+	// Delivery updates must not install files outside delivery/.
+	write("platform-code.txt", "Platform "+version+"\n")
+}
+
+// Exercise the Docker fixture with the real delivery engine in ordinary Go CI,
+// so missing inputs fail before building an image or starting a container.
+func TestDeliveryUpdateFixture(t *testing.T) {
+	testutil.Home(t)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("AI_DEVCONTAINER_MCP_STORE", t.TempDir())
+	t.Setenv("ADC_INSTALL_AI_TOOLS", "0")
+	platform := t.TempDir()
+	if err := os.Symlink(platform, filepath.Join(t.TempDir(), "link")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows symlinks require Developer Mode or elevated privileges")
+		}
+		t.Fatal(err)
+	}
+	a := &runtimeapp.App{Platform: platform, State: t.TempDir(), Runtime: true}
+	for _, version := range []string{"1.0.0", "1.1.0", "1.2.0"} {
+		t.Run(version, func(t *testing.T) {
+			writeDeliveryUpdateFixture(t, platform, version)
+			p := shared.Project{ID: "demo", RuntimePath: t.TempDir()}
+			if err := a.SyncProject(p); err != nil {
+				t.Fatal("delivery fixture cannot initialize a fresh project:", err)
+			}
+			for path, expected := range map[string]string{
+				"AGENTS.platform.md":           "Contract " + version,
+				".claude/skills/demo/SKILL.md": "Stock " + version,
+				"GUIDE-LINK.md":                "Document " + version,
+				"GUIDE-COPY.md":                "Document " + version,
+				".agents/mcp.secrets.env":      "# Integration fixture: no MCP credentials required.",
+			} {
+				data, err := os.ReadFile(filepath.Join(p.RuntimePath, path))
+				if err != nil || !strings.Contains(string(data), expected) {
+					t.Fatalf("%s: expected %q, got %q; error: %v", path, expected, data, err)
+				}
+			}
+		})
+	}
+}
 
 // This exercises real host/runtime commands against a local Git upstream with
 // networking disabled in the running container. The ordinary workspace smoke
@@ -86,22 +152,9 @@ func TestDockerDeliveryUpdate(t *testing.T) {
 	}
 
 	initialize(upstream)
-	write(filepath.Join(upstream, "delivery/catalog.json"), `{"version":1,"base":{"instructions":["instructions/AGENTS.platform.md"],"skills":"skills","mcp":{"source":"mcp.json","servers":[]},"documents":[{"source":"documents/linked.md","target":"GUIDE-LINK.md","mode":"link"},{"source":"documents/copied.md","target":"GUIDE-COPY.md","mode":"copy"},{"source":"documents/copied.md","target":"USER-GUIDE.md","mode":"copy"}]},"capabilities":{}}`)
-	write(filepath.Join(upstream, "delivery/mcp.json"), `{"mcpServers":{}}`)
 	publish := func(version string) {
 		t.Helper()
-		write(filepath.Join(upstream, "delivery/instructions/AGENTS.platform.md"), "Contract "+version+"\n")
-		write(filepath.Join(upstream, "delivery/instructions/AGENTS.platform.md.meta.json"), fmt.Sprintf(`{"kind":"document","name":"platform-rules","version":%q}`, version))
-		for _, document := range []string{"linked", "copied"} {
-			write(filepath.Join(upstream, "delivery/documents", document+".md"), "Document "+version+"\n")
-			write(filepath.Join(upstream, "delivery/documents", document+".md.meta.json"), fmt.Sprintf(`{"kind":"document","name":%q,"version":%q}`, document, version))
-		}
-		for _, skill := range []string{"demo", "forked"} {
-			write(filepath.Join(upstream, "delivery/skills", skill, "SKILL.md"), "---\nname: "+skill+"\ndescription: Integration fixture.\n---\n\nStock "+version+"\n")
-			write(filepath.Join(upstream, "delivery/skills", skill, "meta.json"), fmt.Sprintf(`{"kind":"skill","name":%q,"version":%q}`, skill, version))
-		}
-		// Delivery updates must not install files outside delivery/.
-		write(filepath.Join(upstream, "platform-code.txt"), "Platform "+version+"\n")
+		writeDeliveryUpdateFixture(t, upstream, version)
 		commit(upstream)
 	}
 	publish("1.0.0")
