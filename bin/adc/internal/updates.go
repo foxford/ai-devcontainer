@@ -318,7 +318,13 @@ func extractDeliveryFiles(ctx context.Context, root string, input io.Reader, met
 		}
 		header, err := reader.Next()
 		if err == io.EOF {
-			return nil
+			// TAR EOF precedes Git's trailing record padding. Drain stdout before
+			// cmd.Wait, or Git can block writing to a full pipe (notably on Windows).
+			_, err = io.Copy(io.Discard, input)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return err
 		}
 		if err != nil {
 			return err

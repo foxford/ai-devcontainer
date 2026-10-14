@@ -5,14 +5,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUpdateDeliveryInstallsFullSourceWithoutChangingPlatform(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	a, upstream := updateFixture(t)
 	base := updatesGit(t, a.Platform, "rev-parse", "HEAD")
 	changeUpdateFixture(t, upstream)
@@ -31,7 +35,7 @@ func TestUpdateDeliveryInstallsFullSourceWithoutChangingPlatform(t *testing.T) {
 		}
 		return nil
 	}
-	changes, err := a.UpdateDelivery(context.Background(), apply)
+	changes, err := a.UpdateDelivery(ctx, apply)
 	if err != nil || len(changes) != 3 || applies != 1 {
 		t.Fatalf("update: %+v, calls=%d, err=%v", changes, applies, err)
 	}
@@ -48,12 +52,12 @@ func TestUpdateDeliveryInstallsFullSourceWithoutChangingPlatform(t *testing.T) {
 	if err != nil || script.Size() < 64<<10 || (runtime.GOOS != "windows" && script.Mode().Perm()&0111 == 0) {
 		t.Fatalf("full executable skill source was lost: %v %v", script, err)
 	}
-	status, err := a.CheckUpdates(context.Background(), false)
+	status, err := a.CheckUpdates(ctx, false)
 	if err != nil || status.Available || !status.Cached {
 		t.Fatalf("installed delivery still offered: %+v %v", status, err)
 	}
 	root := a.DeliveryRoot
-	changes, err = a.UpdateDelivery(context.Background(), apply)
+	changes, err = a.UpdateDelivery(ctx, apply)
 	if err != nil || len(changes) != 0 || applies != 2 || a.DeliveryRoot != root {
 		t.Fatalf("repeat should reapply same release: %+v calls=%d %v", changes, applies, err)
 	}
@@ -165,6 +169,51 @@ func TestDeliveryArchiveRejectsLinksTraversalAndOversizedFiles(t *testing.T) {
 			_ = writer.Close()
 			if err := extractDeliveryFiles(context.Background(), t.TempDir(), &data, false); err == nil {
 				t.Fatal("accepted unsafe archive entry")
+			}
+		})
+	}
+}
+
+func TestDeliveryArchiveDrainsProducerAfterTarEOF(t *testing.T) {
+	for name, metadataOnly := range map[string]bool{"metadata": true, "full": false} {
+		t.Run(name, func(t *testing.T) {
+			failure := errors.New("archive stream failed after tar EOF")
+			for name, tailErr := range map[string]error{"padding": nil, "stream error": failure} {
+				t.Run(name, func(t *testing.T) {
+					var archive bytes.Buffer
+					tarWriter := tar.NewWriter(&archive)
+					if err := tarWriter.WriteHeader(&tar.Header{Name: "delivery/skills/demo/meta.json", Mode: 0644, Typeflag: tar.TypeReg}); err != nil {
+						t.Fatal(err)
+					}
+					if err := tarWriter.Close(); err != nil {
+						t.Fatal(err)
+					}
+					input, output := io.Pipe()
+					defer input.Close()
+					defer output.Close()
+					// An unbuffered pipe reproduces small OS pipes on every platform.
+					// Bound failures so the producer cannot hang the whole test suite.
+					timer := time.AfterFunc(5*time.Second, func() {
+						_ = input.CloseWithError(context.DeadlineExceeded)
+					})
+					defer timer.Stop()
+					done := make(chan error, 1)
+					go func() {
+						_, err := output.Write(archive.Bytes())
+						if err == nil {
+							// Git pads records beyond the two zero blocks ending a tar.
+							_, err = output.Write(make([]byte, 64<<10))
+						}
+						_ = output.CloseWithError(tailErr)
+						done <- err
+					}()
+					if err := extractDeliveryFiles(context.Background(), t.TempDir(), input, metadataOnly); !errors.Is(err, tailErr) {
+						t.Fatalf("expected stream error %v, got %v", tailErr, err)
+					}
+					if err := <-done; err != nil {
+						t.Fatalf("archive producer could not finish writing: %v", err)
+					}
+				})
 			}
 		})
 	}
