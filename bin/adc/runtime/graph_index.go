@@ -140,22 +140,33 @@ func EnsureGraph(root string, force bool, run commandRun, out io.Writer, version
 }
 
 func (a *App) ensureGraph(root string, force bool, out io.Writer) error {
-	catalog, err := a.shared().DeliveryCatalog()
+	version, err := a.graphVersion()
 	if err != nil {
 		return err
 	}
+	return a.graphLocked(root, func() error {
+		return EnsureGraph(root, force, graphRun, out, version)
+	})
+}
+
+func (a *App) graphVersion() (string, error) {
+	catalog, err := a.shared().DeliveryCatalog()
+	if err != nil {
+		return "", err
+	}
 	tools := catalog.Capabilities["graphify"].Tools
 	if len(tools) != 1 {
-		return errors.New("catalog: отсутствует поставка Graphify")
+		return "", errors.New("catalog: отсутствует поставка Graphify")
 	}
-	return a.graphLocked(root, func() error {
-		return EnsureGraph(root, force, graphRun, out, tools[0].Version)
-	})
+	return tools[0].Version, nil
 }
 
 func (a *App) graphLocked(root string, fn func() error) error {
 	// A dedicated checkout lock serializes index writers without blocking shared
 	// agent settings or indexing in other repositories and worktrees.
-	locker := &shared.App{State: filepath.Join(a.State, "locks", "graphify-"+shared.CheckoutID(root))}
-	return locker.Locked(fn)
+	return a.graphLocker(root).Locked(fn)
+}
+
+func (a *App) graphLocker(root string) *shared.App {
+	return &shared.App{State: filepath.Join(a.State, "locks", "graphify-"+shared.CheckoutID(root))}
 }

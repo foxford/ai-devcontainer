@@ -14,6 +14,9 @@ import (
 
 // A native executable fixture gives all three CI platforms the same CLI contract.
 func TestMain(m *testing.M) {
+	if code, handled := graphBackgroundHelper(); handled {
+		os.Exit(code)
+	}
 	if os.Getenv("ADC_CODEX_DRIVER_HELPER") == "1" {
 		os.Exit(codexDriverHelper(os.Args[1:]))
 	}

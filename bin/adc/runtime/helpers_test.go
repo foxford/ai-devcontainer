@@ -61,7 +61,8 @@ func TestProjectSyncFailureIsPublishedWithoutStoppingOrca(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "startup.json")
-			t.Setenv("ADC_STARTUP_STATUS", file)
+			stopStartup := shared.ReportStartup(file)
+			defer stopStartup()
 			if err := publishInitialization(tc.err); (err != nil) != tc.fatal {
 				t.Fatal("wrong lifecycle decision", err)
 			}

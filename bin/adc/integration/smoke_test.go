@@ -427,8 +427,7 @@ echo ADC_SANDBOX_READ_WRITE_OK
 		execNode("adc", "tools", "install", "omniroute")
 		project := filepath.Join(tmp, "app-a")
 		write(filepath.Join(project, ".agents", "project.json"), `{"capabilities":["graphify"]}`)
-		synced := docker("exec", "--user", "node", "--env", "ADC_INSTALL_AI_TOOLS=1", container, "adc", "sync", "app-a")
-		assertContains(synced, "Graphify: обновление")
+		checkBackgroundGraphify(t, root, tmp, cli, container, project)
 		// Reproduce a native MCP client's allowlisted environment: use only
 		// HOME/PATH plus the environment explicitly delivered with this server.
 		var delivered struct {
@@ -464,10 +463,6 @@ echo ADC_SANDBOX_READ_WRITE_OK
 		assertContains(read(filepath.Join(project, "graphify-out", "graph.json")), "pages/:events/api.js")
 		if _, err := os.Stat(filepath.Join(tmp, "app-b", "graphify-out")); !os.IsNotExist(err) {
 			t.Fatal("graph leaked into unrelated project")
-		}
-		repeated := docker("exec", "--user", "node", "--env", "ADC_INSTALL_AI_TOOLS=1", container, "adc", "sync", "app-a")
-		if strings.Contains(repeated, "Graphify: обновление") {
-			t.Fatal("unchanged index rebuilt")
 		}
 		write(filepath.Join(project, "example.ts"), "export function authenticateNew(name: string) { return name.length > 0; }\nexport function login(name: string) { return authenticateNew(name); }\n")
 		input := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
@@ -513,7 +508,7 @@ echo ADC_SANDBOX_READ_WRITE_OK
 		// The native worktree still has the earlier source, with its own index.
 		run(root, `{"capabilities":["graphify"]}`, "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > '"+filepath.Join(worktree, ".agents", "project.json")+"'")
 		docker("exec", "--user", "node", "--env", "ADC_INSTALL_AI_TOOLS=1", container, "adc", "sync", worktree)
-		wtGraph := execNode("cat", filepath.Join(worktree, "graphify-out", "graph.json"))
+		wtGraph := waitForGraphify(t, container, worktree, "authenticate")
 		if strings.Contains(wtGraph, "authenticateNew") {
 			t.Fatal("main checkout index leaked into worktree")
 		}

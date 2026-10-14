@@ -29,10 +29,8 @@ func retryNetwork(ctx context.Context, label string, run func() error, wait func
 		}
 		delay := time.Second << (attempt - 1)
 		message := fmt.Sprintf("%s: сетевой сбой; повтор %d/%d через %s: %v", label, attempt+1, networkAttempts, delay, err)
-		if os.Getenv("ADC_STARTUP_STATUS") == "" {
+		if !shared.StartupProgress(message) {
 			fmt.Fprintln(os.Stderr, message)
-		} else {
-			shared.StartupProgress(message)
 		}
 		if err := wait(ctx, delay); err != nil {
 			return err

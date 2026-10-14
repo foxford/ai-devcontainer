@@ -143,8 +143,8 @@ func (a *App) Sync(args []string) error {
 		}
 		return nil
 	})
-	// Shared agent configs are complete; expensive checkout indexing must not
-	// hold the workspace lock needed by capability, skill and MCP changes.
+	// Shared agent configs are complete. Indexing runs in separate processes so
+	// startup, worktree setup and agent launch never wait for a checkout graph.
 	for _, p := range indexed {
 		a.syncGraph(p)
 	}
@@ -264,10 +264,10 @@ func (a *App) syncGraph(p shared.Project) {
 	if err != nil || !shared.Contains(caps, "graphify") {
 		return
 	}
-	shared.StartupProgress("Graphify: проверка и обновление индекса " + p.ID)
-	if err := a.ensureGraph(p.RuntimePath, false, os.Stderr); err != nil {
-		// Index failure must be visible, but must not prevent agent startup.
-		fmt.Fprintln(os.Stderr, "Graphify:", err, "; используйте исходники и adc tools graphify index для повторной попытки")
+	if err := a.startGraphRefresh(p.RuntimePath); err != nil {
+		fmt.Fprintln(os.Stderr, "Graphify: не удалось запустить фоновую индексацию:", err, "; повтор: adc tools graphify index")
+	} else {
+		fmt.Fprintln(os.Stderr, "Graphify: фоновая проверка индекса", p.RuntimePath, "; лог:", graphLogPath(p.RuntimePath))
 	}
 }
 func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {

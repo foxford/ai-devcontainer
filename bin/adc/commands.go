@@ -162,6 +162,8 @@ func commandTree() *cobra.Command {
 	}
 	mcpGraph := leaf(root, "graphify-mcp <checkout>", "MCP Graphify для checkout", cobra.ExactArgs(1), "graphify-mcp")
 	mcpGraph.Hidden = true
+	refreshGraph := leaf(root, "graphify-refresh <checkout>", "Фоновое обновление индекса checkout", cobra.ExactArgs(1), "graphify-refresh")
+	refreshGraph.Hidden = true
 	runtimeCommands(root)
 	helperCommands(root)
 	migrate := leaf(root, "migrate <project> <old-agent-home>", "Импорт авторизаций или переход со старых devcontainer", cobra.ExactArgs(2), "migrate")
@@ -214,7 +216,7 @@ func configureCommandSide(root *cobra.Command, runtime bool) {
 	}
 	if !runtime {
 		root.Short = "Общая изолированная среда разработчика — управление на хосте"
-		remove(root, "banner", "runtime-init", "runtime-serve", "runtime-legacy-archive", "runtime-legacy-shared-archive", "runtime-legacy-import", "runtime-legacy-finish", "graphify-mcp")
+		remove(root, "banner", "runtime-init", "runtime-serve", "runtime-legacy-archive", "runtime-legacy-shared-archive", "runtime-legacy-import", "runtime-legacy-finish", "graphify-mcp", "graphify-refresh")
 		return
 	}
 	root.Short = "Общая среда разработчика — команды внутри контейнера"

@@ -94,6 +94,11 @@ func dispatch(args []string) error {
 			return errors.New("graphify-mcp доступен только внутри ADC")
 		}
 		return r.GraphMCP(args[1], os.Stdin, os.Stdout)
+	case "graphify-refresh":
+		if !ctx.Runtime || len(args) != 2 {
+			return errors.New("graphify-refresh доступен только внутри ADC")
+		}
+		return r.RefreshGraph(args[1])
 	case "runtime-init":
 		if !ctx.Runtime {
 			return errors.New("runtime-init доступен только внутри ADC")

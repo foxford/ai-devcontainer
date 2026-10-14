@@ -21,9 +21,13 @@ func (a *App) Serve() (result error) {
 	if err := runtimeUser(); err != nil {
 		return err
 	}
-	if err := os.Setenv("ADC_STARTUP_STATUS", shared.StartupPath); err != nil {
+	// Old runtime versions exported this to Orca and all of its sessions.
+	// Reporting is now process-local; do not propagate the legacy variable.
+	if err := os.Unsetenv("ADC_STARTUP_STATUS"); err != nil {
 		return err
 	}
+	stopStartup := shared.ReportStartup(shared.StartupPath)
+	defer stopStartup()
 	defer func() {
 		if result != nil {
 			shared.StartupFinished(result)
@@ -82,6 +86,7 @@ func (a *App) Serve() (result error) {
 		if err := publishInitialization(err); err != nil {
 			return err
 		}
+		stopStartup()
 	}
 	select {
 	case <-ctx.Done():

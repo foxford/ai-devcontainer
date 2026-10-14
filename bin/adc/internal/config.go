@@ -187,34 +187,48 @@ func (a *App) Locked(fn func() error) error {
 // Separate host lifecycle operations from runtime configuration writes: the
 // runtime must be able to sync while the host waits for readiness.
 func (a *App) LockedFile(name string, fn func() error) error {
+	_, err := a.lockedFile(name, true, fn)
+	return err
+}
+
+// TryLocked runs fn only when the lock is immediately available. Background
+// refreshes use it to avoid queuing duplicate work behind an existing writer.
+func (a *App) TryLocked(fn func() error) (bool, error) {
+	return a.lockedFile("write.lockfile", false, fn)
+}
+
+func (a *App) lockedFile(name string, wait bool, fn func() error) (bool, error) {
 	if filepath.Base(name) != name || name == "." || name == ".." || name == "" || strings.ContainsAny(name, `/\`) {
-		return errors.New("неверное имя lock")
+		return false, errors.New("неверное имя lock")
 	}
 	if e := os.MkdirAll(a.State, 0700); e != nil {
-		return e
+		return false, e
 	}
 	path := filepath.Join(a.State, name)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer file.Close()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		acquired, err := tryFileLock(file)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if acquired {
 			break
 		}
+		if !wait {
+			return false, nil
+		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("занят lock %s; проверьте другие adc процессы", path)
+			return false, fmt.Errorf("занят lock %s; проверьте другие adc процессы", path)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	defer unlockFile(file)
-	return fn()
+	return true, fn()
 }
 func Abs(path string) (string, error) {
 	p, e := filepath.Abs(path)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -15,7 +16,29 @@ type StartupStatus struct {
 	Updated time.Time `json:"updated"`
 }
 
-func StartupProgress(stage string) { startupStatus("preparing", stage) }
+var startupReport struct {
+	sync.Mutex
+	file string
+}
+
+// ReportStartup enables reporting only in this process. Environment variables
+// would also enable it in Orca's terminals, agents and their ordinary syncs.
+func ReportStartup(file string) func() {
+	startupReport.Lock()
+	previous := startupReport.file
+	startupReport.file = file
+	startupReport.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			startupReport.Lock()
+			startupReport.file = previous
+			startupReport.Unlock()
+		})
+	}
+}
+
+func StartupProgress(stage string) bool { return startupStatus("preparing", stage) }
 func StartupFinished(err error) {
 	if err != nil {
 		startupStatus("failed", err.Error())
@@ -24,17 +47,19 @@ func StartupFinished(err error) {
 	}
 }
 
-func startupStatus(state, stage string) {
-	file := os.Getenv("ADC_STARTUP_STATUS")
-	if file == "" {
-		return
+func startupStatus(state, stage string) bool {
+	startupReport.Lock()
+	defer startupReport.Unlock()
+	if startupReport.file == "" {
+		return false
 	}
 	fmt.Println("[adc]", stage)
 	data, err := json.Marshal(StartupStatus{State: state, Stage: stage, Updated: time.Now().UTC()})
 	if err == nil {
-		err = AtomicWrite(file, append(data, '\n'), 0644)
+		err = AtomicWrite(startupReport.file, append(data, '\n'), 0644)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "[adc] Не удалось записать этап запуска:", err)
 	}
+	return true
 }
