@@ -268,7 +268,7 @@ func (a *App) LegacyCleanup(target string, apply, devcontainer bool) error {
 		}
 		if backup != "" {
 			fmt.Println("Очистка завершена. Проверенная копия:", backup)
-			fmt.Println("Запустите общую среду и выполните adc sync для этого проекта.")
+			fmt.Println("Запустите общую среду командой adc workspace start: контекст проекта будет доставлен автоматически.")
 		}
 		return nil
 	})

@@ -75,7 +75,7 @@ func dispatch(args []string) error {
 				err = h.Exec(p.RuntimePath, []string{"adc", "sync"}, false)
 			}
 			if err != nil {
-				return fmt.Errorf("настройки сохранены, доставка не завершена: %w; после исправления выполните adc sync", err)
+				return fmt.Errorf("настройки сохранены, доставка не завершена: %w; после исправления повторите команду", err)
 			}
 			return nil
 		}

@@ -42,7 +42,7 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 	for _, side := range []string{"0", "1"} {
 		t.Run(side, func(t *testing.T) {
 			t.Setenv("ADC_RUNTIME", side)
-			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": side == "0", "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
+			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": true, "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
 			for name, want := range cases {
 				cmd, rest, err := commandTree().Find(strings.Fields(name))
 				available := err == nil && len(rest) == 0 && cmd.Name() == strings.Fields(name)[len(strings.Fields(name))-1]
@@ -92,5 +92,40 @@ func TestCapabilityHelpAndCompletion(t *testing.T) {
 		if err := cmd.Execute(); err == nil {
 			t.Fatal("accepted add without a capability")
 		}
+	}
+}
+
+func TestSyncRemainsCallableButHiddenFromPublicCommands(t *testing.T) {
+	for _, side := range []string{"0", "1"} {
+		t.Run(side, func(t *testing.T) {
+			t.Setenv("ADC_RUNTIME", side)
+			root := commandTree()
+			sync, rest, err := root.Find([]string{"sync"})
+			if err != nil || len(rest) != 0 || sync.Name() != "sync" || !sync.Hidden {
+				t.Fatalf("internal sync is unavailable or visible: %v", err)
+			}
+			if flag := sync.Flags().Lookup("all"); flag == nil {
+				t.Fatal("internal sync --all flag is missing")
+			}
+			for _, args := range [][]string{{"--help"}, {"__complete", ""}, {"__complete", "sy"}} {
+				var buf bytes.Buffer
+				root := commandTree()
+				root.SetOut(&buf)
+				root.SetErr(&buf)
+				root.SetArgs(args)
+				if err := root.Execute(); err != nil {
+					t.Fatal(err)
+				}
+				for _, line := range strings.Split(buf.String(), "\n") {
+					if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "sync" {
+						t.Fatalf("internal sync exposed by %v: %s", args, buf.String())
+					}
+				}
+			}
+			mcpSync, rest, err := commandTree().Find([]string{"mcp", "sync"})
+			if err != nil || len(rest) != 0 || mcpSync.Name() != "sync" || mcpSync.Hidden {
+				t.Fatalf("public mcp sync was hidden: %v", err)
+			}
+		})
 	}
 }

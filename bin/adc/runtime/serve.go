@@ -101,7 +101,7 @@ func publishInitialization(err error) error {
 		return err
 	}
 	shared.StartupFinished(err)
-	fmt.Fprintln(os.Stderr, "Orca продолжает работу. Исправьте указанные проекты и повторите adc sync; после исправления перезапустите workspace для полной проверки готовности.")
+	fmt.Fprintln(os.Stderr, "Orca продолжает работу. Исправьте указанные проекты и повторите adc workspace start на хосте: команда повторит доставку и проверит готовность среды.")
 	return nil
 }
 

@@ -59,7 +59,11 @@ func relativeDeliveryPath(path string) bool {
 
 // Every catalog source is relative to delivery/, regardless of its content type.
 func (a *App) DeliveryPath(path string) string {
-	return filepath.Join(a.Platform, "delivery", filepath.FromSlash(path))
+	root := a.DeliveryRoot
+	if root == "" {
+		root = filepath.Join(a.Platform, "delivery")
+	}
+	return filepath.Join(root, filepath.FromSlash(path))
 }
 
 func (a *App) ValidateDeliverySource(path string, directory bool) error {
@@ -94,7 +98,7 @@ func (a *App) ValidateDeliverySource(path string, directory bool) error {
 
 func (a *App) DeliveryCatalog() (DeliveryCatalog, error) {
 	var catalog DeliveryCatalog
-	data, err := os.ReadFile(filepath.Join(a.Platform, "delivery", "catalog.json"))
+	data, err := os.ReadFile(a.DeliveryPath("catalog.json"))
 	if err != nil {
 		return catalog, err
 	}

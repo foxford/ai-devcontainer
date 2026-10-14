@@ -45,6 +45,7 @@ type Config struct {
 }
 type App struct {
 	Platform, State string
+	DeliveryRoot    string
 	Runtime         bool
 }
 
@@ -96,7 +97,11 @@ func New() (*App, error) {
 	if state == "" {
 		state = filepath.Join(home, ".adc")
 	}
-	return &App{Platform: platform, State: state, Runtime: os.Getenv("ADC_RUNTIME") == "1"}, nil
+	a := &App{Platform: platform, State: state, Runtime: os.Getenv("ADC_RUNTIME") == "1"}
+	if err := a.RefreshDelivery(); err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 func (a *App) Load() (Config, error) {
 	var c Config

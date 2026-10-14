@@ -302,8 +302,16 @@ func validUpdateRevision(revision string) bool {
 }
 
 func extractUpdateArchive(ctx context.Context, root string, input io.Reader) error {
+	return extractDeliveryFiles(ctx, root, input, true)
+}
+
+func extractDeliveryFiles(ctx context.Context, root string, input io.Reader, metadataOnly bool) error {
 	reader := tar.NewReader(input)
 	var total int64
+	maxFiles, maxFile, maxTotal := 5000, int64(64<<10), int64(8<<20)
+	if !metadataOnly {
+		maxFiles, maxFile, maxTotal = 20000, 16<<20, 128<<20
+	}
 	for count := 0; ; count++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -316,7 +324,7 @@ func extractUpdateArchive(ctx context.Context, root string, input io.Reader) err
 			return err
 		}
 		name := path.Clean(header.Name)
-		if count > 5000 || header.Size > 64<<10 || header.Size < 0 || total+header.Size > 8<<20 {
+		if count >= maxFiles || header.Size > maxFile || header.Size < 0 || total+header.Size > maxTotal {
 			return errors.New("каталог обновления превышает ограничение размера")
 		}
 		total += header.Size
@@ -331,17 +339,21 @@ func extractUpdateArchive(ctx context.Context, root string, input io.Reader) err
 		destination := filepath.Join(root, filepath.FromSlash(name))
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err = os.MkdirAll(destination, 0700); err != nil {
+			if err = os.MkdirAll(destination, 0755); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if !updateMetadataPath(name) {
+			if metadataOnly && !updateMetadataPath(name) {
 				return errors.New("архив проверки должен содержать только метафайлы версий")
 			}
-			if err = os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+			if err = os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
 				return err
 			}
-			file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			mode := os.FileMode(0644)
+			if !metadataOnly && header.Mode&0111 != 0 {
+				mode = 0755
+			}
+			file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 			if err != nil {
 				return err
 			}
@@ -364,7 +376,7 @@ func WriteUpdateStatus(out io.Writer, status UpdateStatus, color bool) error {
 		if err := WriteDeliveryChanges(out, "ADC: доступны обновления", status.Changes, color, false); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "  Применить на хосте: adc update. Работающий workspace будет перезапущен.")
+		fmt.Fprintln(out, "  Применить: adc update --delivery. Без пересборки образа и перезапуска workspace.")
 	} else if status.Error == "" {
 		fmt.Fprintln(out, "ADC: доступных обновлений нет.")
 	}

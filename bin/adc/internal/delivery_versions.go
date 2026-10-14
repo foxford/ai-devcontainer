@@ -62,7 +62,7 @@ func (a *App) DeliveryVersions() (DeliveryVersions, error) {
 		if err := json.Unmarshal(data, &unit); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		if !Contains([]string{"skill", "mcp", "bundle"}, unit.Kind) || !ValidID.MatchString(unit.Name) {
+		if !Contains([]string{"skill", "mcp", "bundle", "document"}, unit.Kind) || !ValidID.MatchString(unit.Name) {
 			return fmt.Errorf("неверные kind/name в %s", path)
 		}
 		if _, err := parseDeliveryVersion(unit.Version); err != nil {

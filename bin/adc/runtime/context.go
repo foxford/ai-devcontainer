@@ -88,6 +88,9 @@ func (e *projectSyncError) Unwrap() error { return e.error }
 func (a *App) Sync(args []string) error {
 	var indexed []shared.Project
 	err := a.shared().Locked(func() error {
+		if err := a.shared().RefreshDelivery(); err != nil {
+			return err
+		}
 		c, e := a.shared().Load()
 		if e != nil {
 			return e
@@ -97,7 +100,7 @@ func (a *App) Sync(args []string) error {
 		}
 		selected := []shared.Project{}
 		if len(args) > 0 && args[0] == "--all" {
-			selected = c.Projects
+			selected = allSyncCheckouts(c.Projects)
 		} else {
 			key := ""
 			if len(args) > 0 {
@@ -292,7 +295,10 @@ func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
 				continue
 			}
 			link, _ := os.Readlink(target)
-			if !strings.HasPrefix(link, a.Platform+"/") {
+			link = filepath.Clean(link)
+			platformLink := strings.HasPrefix(link, filepath.Clean(a.Platform)+string(os.PathSeparator))
+			deliveryLink := filepath.IsAbs(a.State) && strings.HasPrefix(link, filepath.Join(a.State, "delivery")+string(os.PathSeparator))
+			if !platformLink && !deliveryLink {
 				continue
 			}
 			if e = os.Remove(target); e != nil {

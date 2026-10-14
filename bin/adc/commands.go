@@ -142,6 +142,7 @@ func commandTree() *cobra.Command {
 	leaf(project, "knowledge <id|global> <path> <origin>", "Зарегистрировать источник знаний", cobra.ExactArgs(3), "project", "knowledge")
 	leaf(project, "relate <id> <other-id>", "Добавить связь между проектами", cobra.ExactArgs(2), "project", "relate")
 	sync := leaf(root, "sync [project|path]", "Обновить инструкции, skills и MCP", cobra.MaximumNArgs(1), "sync")
+	sync.Hidden = true // Existing setup hooks still invoke this internal delivery step.
 	all := sync.Flags().Bool("all", false, "Синхронизировать все подключённые проекты")
 	sync.RunE = func(c *cobra.Command, args []string) error {
 		if *all {
@@ -217,7 +218,7 @@ func configureCommandSide(root *cobra.Command, runtime bool) {
 		return
 	}
 	root.Short = "Общая среда разработчика — команды внутри контейнера"
-	remove(root, "install", "bootstrap-replace-legacy", "bootstrap-apply-update", "ensure-image", "update")
+	remove(root, "install", "bootstrap-replace-legacy", "bootstrap-apply-update", "ensure-image")
 	for _, command := range root.Commands() {
 		if command.Name() == "project" {
 			for _, child := range command.Commands() {

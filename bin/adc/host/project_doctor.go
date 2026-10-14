@@ -87,13 +87,13 @@ func (a *App) DoctorProject(target string, out io.Writer) error {
 			continue
 		}
 		if name == shared.LegacyProjectStateDir {
-			fmt.Fprintln(out, "WARN: .ai-devcontainer — старое состояние; adc sync скопирует его в .adc")
+			fmt.Fprintln(out, "WARN: .ai-devcontainer — старое состояние; подготовка проекта при запуске агента или workspace скопирует его в .adc")
 		} else {
 			fmt.Fprintln(out, "OK: служебное состояние .adc")
 		}
 	}
 	if info, err := os.Lstat(filepath.Join(root, "AGENTS.platform.md")); os.IsNotExist(err) {
-		fmt.Fprintln(out, "WARN: AGENTS.platform.md отсутствует; требуется adc sync")
+		fmt.Fprintln(out, "WARN: AGENTS.platform.md отсутствует; контекст доставляется при запуске агента или workspace")
 	} else if err != nil {
 		failures = append(failures, err)
 	} else if info.Mode().IsRegular() && strings.Contains(cleanupHeader(root, "AGENTS.platform.md"), "ai-devcontainer:generated") {

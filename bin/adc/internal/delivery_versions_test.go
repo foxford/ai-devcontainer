@@ -60,6 +60,13 @@ func TestEveryPublishedDeliveryUnitHasMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{}
+	documents := map[string]bool{}
+	for _, source := range catalog.Base.Instructions {
+		documents[source] = true
+	}
+	for _, document := range catalog.Base.Documents {
+		documents[document.Source] = true
+	}
 	entries, err := os.ReadDir(a.DeliveryPath(catalog.Base.Skills))
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +88,31 @@ func TestEveryPublishedDeliveryUnitHasMetadata(t *testing.T) {
 		for _, skill := range capability.Skills {
 			want["skill/"+filepath.Base(skill)] = true
 		}
+		for _, source := range capability.Instructions {
+			documents[source] = true
+		}
+		for _, document := range capability.Documents {
+			documents[document.Source] = true
+		}
+	}
+	for source := range documents {
+		path := source + ".meta.json"
+		if err := a.ValidateDeliverySource(path, false); err != nil {
+			t.Fatalf("document %s must have its own sidecar metadata: %v", source, err)
+		}
+		data, err := os.ReadFile(a.DeliveryPath(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var unit DeliveryUnit
+		if err := json.Unmarshal(data, &unit); err != nil || unit.Kind != "document" {
+			t.Fatalf("document sidecar %s must declare kind document: %+v, %v", path, unit, err)
+		}
+		key := "document/" + unit.Name
+		if versions[key] != unit {
+			t.Fatalf("document sidecar was not loaded: %s", path)
+		}
+		want[key] = true
 	}
 	got := map[string]bool{}
 	for key := range versions {
@@ -103,6 +135,7 @@ func TestDeliveryMetadataValidationAndNoContentInspection(t *testing.T) {
 	for _, body := range []string{
 		`{"kind":"skill","name":"example","version":"1.0.0"}`,
 		`{"kind":"skill","name":"example","version":"1.0.0-adc.1"}`,
+		`{"kind":"document","name":"platform-rules","version":"1.0.0"}`,
 	} {
 		write(body)
 		if _, err := a.DeliveryVersions(); err != nil {

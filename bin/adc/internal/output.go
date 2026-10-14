@@ -67,6 +67,8 @@ func WriteDeliveryChanges(out io.Writer, title string, changes []DeliveryChange,
 		kind := change.Kind
 		if kind == "mcp" {
 			kind = "MCP"
+		} else if kind == "document" {
+			kind = "документ"
 		}
 		version := ""
 		if change.BeforeVersion != change.AfterVersion && change.BeforeVersion != "" && change.AfterVersion != "" {

@@ -33,6 +33,20 @@ func (a *App) ownedDeliveryDocument(path string, doc shared.DeliveryDocument) bo
 	if !filepath.IsAbs(link) {
 		link = filepath.Join(filepath.Dir(path), link)
 	}
+	link = filepath.Clean(link)
+	// The source root changes after a delivery-only update and again after a
+	// full platform update. Match the same document within an ADC source root;
+	// a similarly named file elsewhere still belongs to the user.
+	if link == filepath.Join(a.Platform, "delivery", filepath.FromSlash(doc.Source)) {
+		return true
+	}
+	if filepath.IsAbs(a.State) {
+		relative, err := filepath.Rel(filepath.Join(a.State, "delivery"), link)
+		parts := strings.SplitN(relative, string(os.PathSeparator), 3)
+		if err == nil && len(parts) == 3 && (len(parts[0]) == 40 || len(parts[0]) == 64) && strings.Trim(parts[0], "0123456789abcdefABCDEF") == "" && parts[1] == "delivery" && parts[2] == filepath.FromSlash(doc.Source) {
+			return true
+		}
+	}
 	legacy := map[string][]string{
 		".agents/skills/README.md":        {"docs/skills-README.md", "delivery/documents/skills-README.md"},
 		"plans/README.md":                 {"docs/plans-README.md", "delivery/documents/plans-README.md"},

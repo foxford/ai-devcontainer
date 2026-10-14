@@ -154,6 +154,9 @@ func (a *App) update() error {
 		return err
 	}
 	if versionsErr == nil {
+		if err := a.shared().RefreshDelivery(); err != nil {
+			return err
+		}
 		if after, err := a.shared().DeliveryVersions(); err == nil {
 			if changes := shared.DiffDeliveryVersions(before, after); len(changes) > 0 {
 				return shared.WriteDeliveryChanges(os.Stdout, "ADC: платформа обновлена", changes, shared.ColorEnabled(os.Stdout), true)

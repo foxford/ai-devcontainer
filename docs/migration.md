@@ -76,8 +76,7 @@ adc migrate legacy cleanup . --devcontainer
 
 ```sh
 adc migrate legacy cleanup . --devcontainer --apply &&
-adc workspace start &&
-adc sync .
+adc workspace start
 ```
 
 Перед удалением команда сохраняет и проверяет копию в ~/.adc/backups/project-cleanup. Исходники, проектные правила, .agents конфиги и форки, личные настройки агентов и новое состояние .adc сохраняются. Неподтверждённые файлы выводятся как «Оставить».
