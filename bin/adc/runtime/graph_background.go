@@ -14,7 +14,7 @@ func graphLogPath(root string) string {
 	return filepath.Join(root, shared.ProjectStateDir, "graphify.log")
 }
 
-func openGraphLog(path string) (*os.File, error) {
+func openGraphLog(path string, appendMode bool) (*os.File, error) {
 	directory := filepath.Dir(path)
 	info, err := os.Lstat(directory)
 	if os.IsNotExist(err) {
@@ -34,7 +34,7 @@ func openGraphLog(path string) (*os.File, error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	file, err := openGraphLogFile(path)
+	file, err := openGraphLogFile(path, appendMode)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +47,16 @@ func openGraphLog(path string) (*os.File, error) {
 		return nil, fmt.Errorf("%s должен быть обычным файлом", path)
 	}
 	return file, nil
+}
+
+func resetGraphLog(path string) error {
+	// Windows append-only handles cannot truncate. Open a separate write handle
+	// without O_TRUNC so the same path/file checks run before changing its size.
+	log, err := openGraphLog(path, false)
+	if err != nil {
+		return err
+	}
+	return errors.Join(log.Truncate(0), log.Close())
 }
 
 func (a *App) startGraphRefresh(root string) error {
@@ -66,7 +76,7 @@ func (a *App) startGraphRefresh(root string) error {
 // No terminal or command-output pipes may be inherited: their reader would
 // otherwise wait for indexing after sync/agent setup has already returned.
 func startGraphWorker(cmd *exec.Cmd, logPath string) error {
-	log, err := openGraphLog(logPath)
+	log, err := openGraphLog(logPath, true)
 	if err != nil {
 		return err
 	}
@@ -110,11 +120,7 @@ func (a *App) RefreshGraph(root string) error {
 	_, err = a.graphLocker(p.RuntimePath).TryLocked(func() error {
 		// Only the active writer resets the log; a duplicate worker must not
 		// truncate diagnostics from the index already being built.
-		log, err := openGraphLog(graphLogPath(p.RuntimePath))
-		if err != nil {
-			return err
-		}
-		if err := errors.Join(log.Truncate(0), log.Close()); err != nil {
+		if err := resetGraphLog(graphLogPath(p.RuntimePath)); err != nil {
 			return err
 		}
 		err = EnsureGraph(p.RuntimePath, false, graphRun, os.Stderr, version)

@@ -28,9 +28,11 @@ func assertGraphLogRejected(t *testing.T, path string) {
 }
 
 func TestGraphBackgroundRejectsForeignLogPaths(t *testing.T) {
-	requireSymlinks(t)
 	for _, scenario := range []string{"state-symlink", "log-symlink", "state-file", "log-directory"} {
 		t.Run(scenario, func(t *testing.T) {
+			if scenario == "state-symlink" || scenario == "log-symlink" {
+				requireSymlinks(t)
+			}
 			root, outside := t.TempDir(), t.TempDir()
 			log := graphLogPath(root)
 			protected := filepath.Join(outside, "graphify.log")
@@ -55,6 +57,9 @@ func TestGraphBackgroundRejectsForeignLogPaths(t *testing.T) {
 				}
 			}
 			assertGraphLogRejected(t, log)
+			if err := resetGraphLog(log); err == nil {
+				t.Fatal("log reset accepted a nonregular log path", log)
+			}
 			if readFixture(t, protected) != "ADC_FOREIGN_CONTENT" {
 				t.Fatal("worker modified a file outside the checkout")
 			}
@@ -87,34 +92,38 @@ func TestGraphBackgroundDoesNotTruncateForeignLog(t *testing.T) {
 
 func TestGraphLogAppendsUntilActiveWriterResetsIt(t *testing.T) {
 	path := graphLogPath(t.TempDir())
-	log, err := openGraphLog(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := log.WriteString("first\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := log.Close(); err != nil {
-		t.Fatal(err)
-	}
-	log, err = openGraphLog(path)
+	log, err := openGraphLog(path, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer log.Close()
-	if _, err := log.WriteString("second\n"); err != nil {
+	if _, err := log.WriteString("first\n"); err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := openGraphLog(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer duplicate.Close()
+	if _, err := duplicate.WriteString("second\n"); err != nil {
 		t.Fatal(err)
 	}
 	if readFixture(t, path) != "first\nsecond\n" {
 		t.Fatal("opening a duplicate worker's log lost active diagnostics")
 	}
-	if err := log.Truncate(0); err != nil {
+	if err := resetGraphLog(path); err != nil {
 		t.Fatal(err)
+	}
+	if readFixture(t, path) != "" {
+		t.Fatal("active writer did not reset its regular log")
 	}
 	if _, err := log.WriteString("reset\n"); err != nil {
 		t.Fatal(err)
 	}
-	if readFixture(t, path) != "reset\n" {
-		t.Fatal("active writer did not reset its regular log")
+	if _, err := duplicate.WriteString("after reset\n"); err != nil {
+		t.Fatal(err)
+	}
+	if readFixture(t, path) != "reset\nafter reset\n" {
+		t.Fatal("open writers did not append to the reset log")
 	}
 }
