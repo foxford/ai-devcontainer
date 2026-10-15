@@ -99,7 +99,7 @@ func (a *App) Workspace(args []string) error {
 		if e = a.shared().RequireHost(); e != nil {
 			return e
 		}
-		return shared.Run("", "docker", "logs", "--tail", "100", a.shared().Container(c))
+		return runWorkspaceLogs(a.shared().Container(c), args[1:], shared.Run)
 	case "shell":
 		if shared.IsTerminalOutput(os.Stdout) {
 			a.shared().ShowUpdateNotice(os.Stdout)

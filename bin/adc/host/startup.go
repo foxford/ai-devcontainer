@@ -16,8 +16,9 @@ import (
 )
 
 type workspaceStartup struct {
-	Status   string
-	Progress shared.StartupStatus
+	Status    string
+	StartedAt time.Time
+	Progress  shared.StartupStatus
 }
 
 func dockerStartup(ctx context.Context, container string) (workspaceStartup, error) {
@@ -40,7 +41,7 @@ func dockerStartup(ctx context.Context, container string) (workspaceStartup, err
 	if err := json.Unmarshal(data, &state); err != nil {
 		return workspaceStartup{}, err
 	}
-	result := workspaceStartup{Status: state.Status, Progress: shared.StartupStatus{State: "preparing", Stage: "Запуск runtime"}}
+	result := workspaceStartup{Status: state.Status, StartedAt: state.StartedAt, Progress: shared.StartupStatus{State: "preparing", Stage: "Запуск runtime"}}
 	if data, err := output("exec", container, "cat", shared.StartupPath); err == nil {
 		if progress, current := startupForBoot(data, state.StartedAt); current {
 			result.Progress = progress
@@ -114,7 +115,12 @@ func (a *App) waitForWorkspaceReady(c shared.Config) (bool, error) {
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	err := waitWorkspace(ctx, func(ctx context.Context) (workspaceStartup, error) { return dockerStartup(ctx, container) }, os.Stdout, time.Second, 15*time.Second)
+	var state workspaceStartup
+	err := waitWorkspace(ctx, func(ctx context.Context) (workspaceStartup, error) {
+		var err error
+		state, err = dockerStartup(ctx, container)
+		return state, err
+	}, os.Stdout, time.Second, 15*time.Second)
 	if errors.Is(err, context.Canceled) {
 		fmt.Println("Ожидание прервано. Контейнер продолжает работу; состояние: adc workspace status; прогресс: adc workspace logs.")
 		return false, nil
@@ -125,6 +131,9 @@ func (a *App) waitForWorkspaceReady(c shared.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Printf("Готово. Workspace работает в фоне; консоль свободна. Orca → Add Server → 127.0.0.1:%d. Pairing: adc orca pairing --help\n", c.Port)
+	fmt.Println("Готово. Workspace работает в фоне; консоль свободна.")
+	// Pairing is a convenience after readiness, not another startup gate.
+	pairingURL, _ := dockerPairing(ctx, container, state.StartedAt)
+	printWorkspacePairing(os.Stdout, c.Port, pairingURL)
 	return true, nil
 }

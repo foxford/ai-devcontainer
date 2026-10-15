@@ -42,7 +42,7 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 	for _, side := range []string{"0", "1"} {
 		t.Run(side, func(t *testing.T) {
 			t.Setenv("ADC_RUNTIME", side)
-			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": true, "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
+			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": true, "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace logs": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
 			for name, want := range cases {
 				cmd, rest, err := commandTree().Find(strings.Fields(name))
 				available := err == nil && len(rest) == 0 && cmd.Name() == strings.Fields(name)[len(strings.Fields(name))-1]
@@ -64,6 +64,45 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWorkspaceLogsFlagsAndHelp(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	for _, tc := range []struct {
+		args   []string
+		tail   string
+		follow bool
+	}{
+		{nil, "all", false},
+		{[]string{"--tail", "100"}, "100", false},
+		{[]string{"--tail=all", "--follow"}, "all", true},
+		{[]string{"-f", "--tail", "0"}, "0", true},
+	} {
+		cmd, _, err := commandTree().Find([]string{"workspace", "logs"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.ParseFlags(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		tail, _ := cmd.Flags().GetString("tail")
+		follow, _ := cmd.Flags().GetBool("follow")
+		if tail != tc.tail || follow != tc.follow {
+			t.Fatalf("args %v: tail=%q follow=%v", tc.args, tail, follow)
+		}
+	}
+	var help bytes.Buffer
+	cmd := commandTree()
+	cmd.SetOut(&help)
+	cmd.SetArgs([]string{"workspace", "logs", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--tail", "--follow", "-f", "all"} {
+		if !strings.Contains(help.String(), want) {
+			t.Fatalf("logs help omits %q: %s", want, help.String())
+		}
 	}
 }
 

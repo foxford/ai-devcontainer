@@ -62,8 +62,18 @@ func commandTree() *cobra.Command {
 	init.RunE = func(c *cobra.Command, args []string) error {
 		return dispatch(append(append([]string{"workspace", "init"}, args...), "--port", strconv.Itoa(*port), "--omniroute-port", strconv.Itoa(*omniPort), "--graph-port", strconv.Itoa(*graphPort)))
 	}
-	for _, s := range []struct{ name, help string }{{"start", "Запустить среду в фоне и дождаться готовности с выводом этапов"}, {"stop", "Остановить среду с сохранением данных"}, {"status", "Состояние контейнера и готовность среды"}, {"logs", "Логи подготовки среды и сервера Orca"}, {"map", "Обновить карту проектов и знаний"}} {
+	for _, s := range []struct{ name, help string }{{"start", "Запустить среду в фоне и дождаться готовности с выводом этапов"}, {"stop", "Остановить среду с сохранением данных"}, {"status", "Состояние контейнера и готовность среды"}, {"map", "Обновить карту проектов и знаний"}} {
 		leaf(workspace, s.name, s.help, cobra.NoArgs, "workspace", s.name)
+	}
+	logs := leaf(workspace, "logs", "Полные логи подготовки среды и сервера Orca", cobra.NoArgs, "workspace", "logs")
+	tail := logs.Flags().String("tail", "all", "Число последних строк или all для полного журнала")
+	follow := logs.Flags().BoolP("follow", "f", false, "Продолжать вывод новых строк")
+	logs.RunE = func(c *cobra.Command, args []string) error {
+		argv := []string{"workspace", "logs", "--tail", *tail}
+		if *follow {
+			argv = append(argv, "--follow")
+		}
+		return dispatch(argv)
 	}
 	leaf(workspace, "shell [project]", "Открыть терминал внутри среды", cobra.MaximumNArgs(1), "workspace", "shell")
 	project := &cobra.Command{Use: "project", Short: "Подключённые репозитории и источники знаний", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return c.Help() }}
