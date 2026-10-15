@@ -24,7 +24,7 @@ func TestDockerMountScope(t *testing.T) {
 		t.Fatal(e)
 	}
 	s := strings.Join(args, "\n")
-	for _, want := range []string{"127.0.0.1:6770:6768", "127.0.0.1:20128:20128", "127.0.0.1:4242:4242", "dst=/projects/app,readonly", "src=adc-test-home,dst=/home/node", "ADC_RUNTIME=1"} {
+	for _, want := range []string{"127.0.0.1:6770:6768", "ADC_ORCA_PORT=6770", "127.0.0.1:20128:20128", "127.0.0.1:4242:4242", "dst=/projects/app,readonly", "src=adc-test-home,dst=/home/node", "ADC_RUNTIME=1"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %s", want)
 		}

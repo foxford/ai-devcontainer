@@ -17,6 +17,10 @@ import (
 const Schema = 1
 const Marker = "<!-- ai-devcontainer:generated -->\n"
 
+// DefaultOrcaPort is the host port for a new workspace. The runtime listens on
+// 6768; a separate host port allows the desktop Orca server to run alongside it.
+const DefaultOrcaPort = 6770
+
 var ValidID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`)
 
 type Knowledge struct {

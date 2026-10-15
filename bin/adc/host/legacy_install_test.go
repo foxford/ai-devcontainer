@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/testutil"
 )
 
@@ -117,6 +118,23 @@ func TestPOSIXBootstrapReplacesLegacyAtDefaultPaths(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(state, "workspace.json")); err != nil {
 		t.Fatal("new workspace was not initialized")
+	}
+	a := &shared.App{State: state}
+	config, err := a.Load()
+	if err != nil || config.Port != 6770 {
+		t.Fatalf("installer default port=%d err=%v", config.Port, err)
+	}
+	config.Port = 6768
+	if err := a.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	reinstall := exec.Command(helper, "install", "--no-orca", "--no-shell")
+	reinstall.Env = cmd.Env
+	if data, err := reinstall.CombinedOutput(); err != nil {
+		t.Fatalf("reinstall: %v %s", err, data)
+	}
+	if saved, err := a.Load(); err != nil || saved.Port != 6768 {
+		t.Fatalf("reinstall changed existing Orca port: %d, err=%v", saved.Port, err)
 	}
 	if info, err := os.Lstat(installed); err != nil || !info.Mode().IsRegular() {
 		t.Fatal("old ADC link was not replaced by a regular executable")

@@ -2,8 +2,13 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 )
 
 func TestCommandHelpAndCompletion(t *testing.T) {
@@ -42,7 +47,7 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 	for _, side := range []string{"0", "1"} {
 		t.Run(side, func(t *testing.T) {
 			t.Setenv("ADC_RUNTIME", side)
-			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": true, "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace logs": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
+			cases := map[string]bool{"banner": side == "1", "install": side == "0", "update": true, "ensure-image": side == "0", "project add": side == "0", "project list": true, "project capability list": true, "project capability add": true, "project capability rm": true, "workspace start": side == "0", "workspace logs": side == "0", "workspace config": side == "0", "workspace map": true, "migrate legacy import-host": side == "0", "doctor project": true, "sync": true, "agent": true}
 			for name, want := range cases {
 				cmd, rest, err := commandTree().Find(strings.Fields(name))
 				available := err == nil && len(rest) == 0 && cmd.Name() == strings.Fields(name)[len(strings.Fields(name))-1]
@@ -64,6 +69,100 @@ func TestCommandAvailabilityAndCompletionMatchExecutionSide(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWorkspacePortDefaultsAndConfigCLI(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	t.Setenv("ADC_HOME", t.TempDir())
+	if err := Run([]string{"workspace", "init", "configured"}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := shared.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := a.Load()
+	if err != nil || c.Port != 6770 || c.Name != "configured" {
+		t.Fatalf("CLI init defaults: %+v err=%v", c, err)
+	}
+	for _, tc := range []struct {
+		args []string
+		want [3]int
+	}{
+		{[]string{"--port", "6781", "--omniroute-port", "21128", "--graph-port", "4342"}, [3]int{6781, 21128, 4342}},
+		{[]string{"--port=6770"}, [3]int{6770, 21128, 4342}},
+		{[]string{"--omniroute-port=20129"}, [3]int{6770, 20129, 4342}},
+		{[]string{"--graph-port", "4243"}, [3]int{6770, 20129, 4243}},
+		{nil, [3]int{6770, 20129, 4243}},
+	} {
+		root := commandTree()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetArgs(append([]string{"workspace", "config"}, tc.args...))
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		got, err := a.Load()
+		want := c
+		want.Port, want.OmniRoutePort, want.GraphPort = tc.want[0], tc.want[1], tc.want[2]
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("args=%v config=%+v want=%+v err=%v", tc.args, got, want, err)
+		}
+		if !strings.Contains(out.String(), "Сохранённые порты") {
+			t.Fatal("config output missing", out.String())
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"--port", "wat"}, {"--port", "0"}, {"--port", "65536"}, {"--port", "20129"}, {"--unknown"}, {"extra"}} {
+		if err := Run(append([]string{"workspace", "config"}, args...)); err == nil {
+			t.Fatalf("accepted invalid CLI config: %v", args)
+		}
+		after, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatal("invalid invocation changed saved config", err)
+		}
+	}
+}
+
+func TestWorkspaceConfigHelpAndCompletion(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	for _, command := range []string{"init", "config"} {
+		var help bytes.Buffer
+		root := commandTree()
+		root.SetOut(&help)
+		root.SetArgs([]string{"workspace", command, "--help"})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		for _, flag := range []string{"--port", "--omniroute-port", "--graph-port"} {
+			if !strings.Contains(help.String(), flag) {
+				t.Fatalf("%s help missing %s", command, flag)
+			}
+		}
+		if command == "init" && !strings.Contains(help.String(), "6770") {
+			t.Fatal("init help missing host port default", help.String())
+		}
+		if command == "config" && (!strings.Contains(help.String(), "adc workspace start") || !strings.Contains(help.String(), "активные сеансы")) {
+			t.Fatal("config help missing apply guidance", help.String())
+		}
+	}
+	for _, side := range []string{"0", "1"} {
+		t.Setenv("ADC_RUNTIME", side)
+		var out bytes.Buffer
+		root := commandTree()
+		root.SetOut(&out)
+		root.SetErr(&out)
+		root.SetArgs([]string{"__complete", "workspace", "conf"})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "config\t") != (side == "0") {
+			t.Fatal("config completion does not match execution side", side, out.String())
+		}
 	}
 }
 

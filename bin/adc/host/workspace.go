@@ -15,6 +15,9 @@ func (a *App) Workspace(args []string) error {
 	if len(args) == 0 {
 		return errors.New("adc workspace --help")
 	}
+	if args[0] == "config" {
+		return a.WorkspaceConfig(args[1:], os.Stdout)
+	}
 	if args[0] == "init" {
 		if e := a.shared().RequireHost(); e != nil {
 			return e
@@ -23,7 +26,7 @@ func (a *App) Workspace(args []string) error {
 			if _, e := os.Stat(filepath.Join(a.State, "workspace.json")); e == nil {
 				return errors.New("workspace уже существует")
 			}
-			c := shared.Config{Version: shared.Schema, Name: "developer", Port: 6768, Projects: []shared.Project{}}
+			c := shared.Config{Version: shared.Schema, Name: "developer", Port: shared.DefaultOrcaPort, Projects: []shared.Project{}}
 			for i := 1; i < len(args); i++ {
 				if shared.Contains([]string{"--port", "--omniroute-port", "--graph-port"}, args[i]) {
 					flag := args[i]
@@ -198,6 +201,12 @@ func (a *App) Start(c shared.Config) error {
 	return a.shared().LockedFile("update.lockfile", func() error {
 		return a.shared().LockedFile("lifecycle.lockfile", func() error {
 			if err := a.checkMigration(); err != nil {
+				return err
+			}
+			// A config change may have completed while start waited for this lock.
+			var err error
+			c, err = a.shared().Load()
+			if err != nil {
 				return err
 			}
 			if resumed, err := a.resumeReplacement(c, realDocker(), a.replacementWait(c)); resumed || err != nil {

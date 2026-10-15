@@ -56,11 +56,30 @@ func commandTree() *cobra.Command {
 	workspace := &cobra.Command{Use: "workspace", Short: "Управление общей Docker средой", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return c.Help() }}
 	root.AddCommand(workspace)
 	init := leaf(workspace, "init [name]", "Создать workspace без изменения проектов", cobra.MaximumNArgs(1), "workspace", "init")
-	port := init.Flags().Int("port", 6768, "Порт Orca на 127.0.0.1")
+	port := init.Flags().Int("port", shared.DefaultOrcaPort, "Порт Orca на 127.0.0.1")
 	omniPort := init.Flags().Int("omniroute-port", 20128, "Порт OmniRoute на 127.0.0.1")
 	graphPort := init.Flags().Int("graph-port", 4242, "Порт просмотра графа на 127.0.0.1")
 	init.RunE = func(c *cobra.Command, args []string) error {
 		return dispatch(append(append([]string{"workspace", "init"}, args...), "--port", strconv.Itoa(*port), "--omniroute-port", strconv.Itoa(*omniPort), "--graph-port", strconv.Itoa(*graphPort)))
+	}
+	config := leaf(workspace, "config", "Показать или изменить сохранённые порты workspace", cobra.NoArgs, "workspace", "config")
+	config.Long = "Показать сохранённые порты или изменить явно переданные значения. Применить изменения: adc workspace start. Если среда работает, перезапуск завершит активные сеансы."
+	config.Flags().Int("port", 0, "Новый порт Orca на 127.0.0.1")
+	config.Flags().Int("omniroute-port", 0, "Новый порт OmniRoute на 127.0.0.1")
+	config.Flags().Int("graph-port", 0, "Новый порт просмотра графа на 127.0.0.1")
+	config.RunE = func(c *cobra.Command, args []string) error {
+		argv := []string{}
+		for _, name := range []string{"port", "omniroute-port", "graph-port"} {
+			if c.Flags().Changed(name) {
+				value, _ := c.Flags().GetInt(name)
+				argv = append(argv, "--"+name, strconv.Itoa(value))
+			}
+		}
+		a, err := shared.New()
+		if err != nil {
+			return err
+		}
+		return (*host.App)(a).WorkspaceConfig(argv, c.OutOrStdout())
 	}
 	for _, s := range []struct{ name, help string }{{"start", "Запустить среду в фоне и дождаться готовности с выводом этапов"}, {"stop", "Остановить среду с сохранением данных"}, {"status", "Состояние контейнера и готовность среды"}, {"map", "Обновить карту проектов и знаний"}} {
 		leaf(workspace, s.name, s.help, cobra.NoArgs, "workspace", s.name)

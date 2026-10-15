@@ -63,10 +63,10 @@ adc workspace logs
 
 1. В приложении Orca нажмите **⚙️ → Remote Orca Servers → Add Server**.
 2. В **Name in Orca** введите `ADC Developer`, в **Access link** вставьте pairing URL.
-3. Для ADC на этом же компьютере адрес назначения обычно `127.0.0.1:6768`; адрес и порт своего workspace возьмите из вывода `adc workspace start`. Если Orca показывает **This link points back to this device**, раскройте **Advanced** и отметьте **I am using an SSH tunnel to this local address**. Этот переключатель разрешает loopback-подключение; здесь адрес обслуживает локальный проброс Docker/WSL.
+3. Адрес и порт своего workspace возьмите из вывода `adc workspace start`. Новые workspace по умолчанию используют `127.0.0.1:6770`; ранее созданные сохраняют свой порт. Если Orca показывает **This link points back to this device**, раскройте **Advanced** и отметьте **I am using an SSH tunnel to this local address**. Этот переключатель разрешает loopback-подключение; здесь адрес обслуживает локальный проброс Docker/WSL.
 4. Нажмите **Add host using tunnel**; при отсутствии предупреждения кнопка может называться **Add host** или **Add Server**. Дождитесь **Connected** и откройте проект из списка слева.
 
-Подключение Windows-клиента Orca к ADC в WSL проверено с локальным пробросом порта. Если подключение не удаётся, диагностика и команда проверки порта приведены в [справочнике среды](docs/workspace.md#диагностика-подключения-orca). Надпись **SSH tunnel required** отражает выбранный переключатель; **Manual update** означает, что сервер Orca обновляется вместе с ADC.
+Подключение Windows-клиента Orca к ADC в WSL проверено с локальным пробросом порта. Если workspace не запускается из-за занятого порта или клиент не подключается, порядок смены и проверки порта приведён в [справочнике среды](docs/workspace.md#диагностика-подключения-orca). Надпись **SSH tunnel required** отражает выбранный переключатель; **Manual update** означает, что сервер Orca обновляется вместе с ADC.
 
 ### Выбрать агента и поставить задачу
 
