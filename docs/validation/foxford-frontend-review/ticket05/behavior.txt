@@ -1,0 +1,20 @@
+TAP version 13
+# Subtest: before: combined imports, extraction, i18n and VM subscriptions
+ok 1 - before: combined imports, extraction, i18n and VM subscriptions
+  ---
+  duration_ms: 66.312292
+  ...
+# Subtest: after: combined imports, extraction, i18n and VM subscriptions
+ok 2 - after: combined imports, extraction, i18n and VM subscriptions
+  ---
+  duration_ms: 24.558084
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 354.442

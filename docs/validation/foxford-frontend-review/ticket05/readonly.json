@@ -1,0 +1,37 @@
+{
+  "status": "неполная проверка — требуется решение",
+  "mode": "read-only",
+  "findings": [
+    "FF-CSS-001 styles.css:1",
+    "FF-CSS-002 styles.css:2",
+    "FF-REACT-001 Screen.tsx:9",
+    "FF-REACT-002 Screen.tsx:6",
+    "FF-IMPORT-001 Screen.tsx:3",
+    "FF-I18N-001 Screen.tsx:12, New.tsx:3",
+    "FF-UI-001 styles.css:5",
+    "FF-UI-002 PROJECT.md:1",
+    "FF-VM-001 Screen.tsx:10",
+    "FF-VM-002 Screen.tsx:11,14",
+    "FF-VM-003 model.cjs:3",
+    "FF-VM-004 model.cjs:4"
+  ],
+  "files": {
+    "notes.txt": "89212aa93a9c679ee94736d6c6920e807d7a15ae57be1893a79372dc982c1c95",
+    "PROJECT.md": "f1ef11970fc69ce7af249a3e33eaf7fb141ac521228de8dbede7c424a35a152a",
+    ".gitignore": "4d56952b0fb13bf8f9b6c13a6d4c34a075bac3af447636a1df4335d7576e2f97",
+    "server/job.ts": "4e76e2008410db794029c7c8c6ac61e8036cdb626b87ce7e41f8c402df136c00",
+    "client/styles.css": "2fc4355beae23f799d3cc79afa75f1af7a1abd404b2968925214b837a2ae413b",
+    "client/New.tsx": "67bc7ec0746599d1afc8105d39fef6ea7e49d6d93157d4943c2c9c590d69c8a6",
+    "client/Screen.tsx": "00c306fc08b5c2440118e912ff477e820e8e201570f6d3f9e88f8fc05ed745de",
+    "client/model.cjs": "b6843e91b6735573d18351538b593e4bd6ce90d11c7f03fcbbe93d3ce92a3108",
+    "client/ui/Button.tsx": "4058f431ace5a8819ebd476e5536b3f682247bdcb793cb6675105697abfcd8ee",
+    "client/catalog/constants.ts": "9e483fa32e93430ba737bd6e4974bd6a4d351bd30c2243c616d05e03163a4270",
+    "client/catalog/index.ts": "b20c2b6f93550f16fd104516114c875bcc2eec58f021eca5fdf941588acc0a32",
+    "client/catalog/inside.ts": "840523c68a0eeeb88c1373a9abc049cd00abdb82489cca77eb250150897b871b"
+  },
+  "indexBefore": "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293",
+  "indexAfter": "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293",
+  "writes": 0,
+  "checks": "не проводились в read-only; только анализ",
+  "repeat": true
+}

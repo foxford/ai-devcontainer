@@ -1,0 +1,69 @@
+diff --git a/client/Screen.tsx b/client/Screen.tsx
+index 481ab6a..4fef28e 100644
+--- a/client/Screen.tsx
++++ b/client/Screen.tsx
+@@ -1,3 +1,19 @@
+-import React from "react";
+-// USER: original note
+-export function Screen() { return <section />; }
++import React, { useCallback } from "react";
++import { FormattedMessage, useIntl } from "react-intl";
++import { Item } from "./Item";
++import { Empty } from "./Empty";
++import { Button } from "./ui/Button";
++// USER: unfinished personal note
++import type { ScreenProps } from "./types";
++export function Screen({ vm, factor, items, onSelect }: ScreenProps) {
++  const intl = useIntl();
++  const multiply = useCallback((n: number) => n * factor, [factor]);
++  const total = vm.state.count.map(multiply);
++  const busy = vm.state.busy.use();
++  return <section className="panel"><h2 className="heading"><FormattedMessage id="heading" defaultMessage="Hello {name}" values={{ name: "Ada" }} /></h2>
++    <input placeholder={intl.formatMessage({ id: "search", defaultMessage: "Search" })} />
++    <output>{total.signal}</output><Button disabled={busy}>Save</Button>
++    <ul>{items.map(item => <Item key={item.id} item={item} onSelect={onSelect} />)}</ul>{items.length ? null : <Empty />}
++    <article className="articleBody"><p>Editor content</p><Button><span>Embedded</span></Button></article>
++  </section>;
++}
+diff --git a/client/styles.css b/client/styles.css
+index 8218dee..c47e02f 100644
+--- a/client/styles.css
++++ b/client/styles.css
+@@ -1,3 +1,14 @@
+ .panel { padding: 16px; }
++.panel .heading { margin: 0; }
++/* editor content, with embedded kit widget */
++.articleBody p { margin: 16px; }
++.articleBody button > span { border-radius: 6px; }
++.kitButton { border-radius: 8px; } /* kit source fixture, not an app override */
+ /* legacy outside task */
+ .old { margin: 7.999px; }
++/* intentional DPR2 hairline */
++.line { border-bottom: 0.5px solid; }
++.icon { transform: translateX(0.5px); } /* optical correction */
++.text { line-height: 1.5; opacity: .75; }
++.column { width: 33.333%; transform: rotate(22.5deg); }
++.layout { padding: calc(8px * 2); }
+diff --git a/client/ui/Button.tsx b/client/ui/Button.tsx
+index e403db1..4578094 100644
+--- a/client/ui/Button.tsx
++++ b/client/ui/Button.tsx
+@@ -1,2 +1,3 @@
+ import React from "react";
+-export function Button({ children, disabled, onClick, size = "medium" }) { return <button className="kitButton" data-size={size} disabled={disabled} onClick={onClick}>{children}</button>; }
++type Props = { children: React.ReactNode; disabled?: boolean; onClick?: () => void; size?: "small" | "medium" };
++export function Button({ children, disabled, onClick, size = "medium" }: Props) { return <button className="kitButton" data-size={size} disabled={disabled} onClick={onClick}>{children}</button>; }
+diff --git a/notes.txt b/notes.txt
+index 4b48dee..d303075 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-original
++unfinished user work
+diff --git a/server/job.ts b/server/job.ts
+index fe83d80..6c31940 100644
+--- a/server/job.ts
++++ b/server/job.ts
+@@ -1 +1 @@
+-export const emailCss = ".invoice h2 { padding: 15.999px }";
++export const emailCss = ".invoice h2 { padding: 19.999px }";

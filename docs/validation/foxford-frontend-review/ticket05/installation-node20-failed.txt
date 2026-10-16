@@ -1,0 +1,15 @@
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'skills@1.7.2',
+npm warn EBADENGINE   required: { node: '>=22.20.0' },
+npm warn EBADENGINE   current: { node: 'v20.19.0', npm: '10.8.2' }
+npm warn EBADENGINE }
+file:///Users/user/.npm/_npx/639c10ba7873a1df/node_modules/skills/dist/cli.mjs:20
+import { access, chmod, cp, glob, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from "fs/promises";
+                            ^^^^
+SyntaxError: The requested module 'fs/promises' does not provide an export named 'glob'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:175:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:258:5)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:540:24)
+    at async file:///Users/user/.npm/_npx/639c10ba7873a1df/node_modules/skills/bin/cli.mjs:14:1
+
+Node.js v20.19.0

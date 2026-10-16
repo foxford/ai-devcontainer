@@ -1,0 +1,14 @@
+.panel { padding: 16px; }
+.panel .heading { margin: 0; }
+/* editor content, with embedded kit widget */
+.articleBody p { margin: 16px; }
+.articleBody button > span { border-radius: 6px; }
+.kitButton { border-radius: 8px; } /* kit source fixture, not an app override */
+/* legacy outside task */
+.old { margin: 7.999px; }
+/* intentional DPR2 hairline */
+.line { border-bottom: 0.5px solid; }
+.icon { transform: translateX(0.5px); } /* optical correction */
+.text { line-height: 1.5; opacity: .75; }
+.column { width: 33.333%; transform: rotate(22.5deg); }
+.layout { padding: calc(8px * 2); }

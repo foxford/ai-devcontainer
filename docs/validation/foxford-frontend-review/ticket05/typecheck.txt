@@ -1,0 +1,1 @@
+after: 0 diagnostics, strict, real VM/React/intl declarations; no any/as bypass

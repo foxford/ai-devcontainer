@@ -1,0 +1,89 @@
+{
+  "copies": "both agents: all four files byte-identical",
+  "IDs": [
+    "FF-CSS-001",
+    "FF-CSS-002",
+    "FF-REACT-001",
+    "FF-REACT-002",
+    "FF-IMPORT-001",
+    "FF-I18N-001",
+    "FF-UI-001",
+    "FF-UI-002",
+    "FF-VM-001",
+    "FF-VM-002",
+    "FF-VM-003",
+    "FF-VM-004"
+  ],
+  "anchors": [
+    "ff-css-001",
+    "ff-css-002",
+    "ff-react-001",
+    "ff-react-002",
+    "ff-import-001",
+    "ff-i18n-001",
+    "ff-ui-001",
+    "ff-ui-002",
+    "ff-vm-001",
+    "ff-vm-002",
+    "ff-vm-003",
+    "ff-vm-004"
+  ],
+  "pairedExamples": {
+    "FF-CSS-001": {
+      "bad": 3,
+      "good": 3
+    },
+    "FF-CSS-002": {
+      "bad": 3,
+      "good": 3
+    },
+    "FF-REACT-001": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-REACT-002": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-IMPORT-001": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-I18N-001": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-UI-001": {
+      "bad": 3,
+      "good": 3
+    },
+    "FF-UI-002": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-VM-001": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-VM-002": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-VM-003": {
+      "bad": 2,
+      "good": 2
+    },
+    "FF-VM-004": {
+      "bad": 2,
+      "good": 2
+    }
+  },
+  "relativeLinks": "all resolved",
+  "localAbsoluteRuntimeDependencies": "none",
+  "metadata": {
+    "kind": "skill",
+    "name": "foxford-frontend-review",
+    "version": "1.4.0"
+  },
+  "normativeRules": "only CODESTYLE.md; SKILL/USAGE reference process and IDs, no copied requirements"
+}

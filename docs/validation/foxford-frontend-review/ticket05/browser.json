@@ -1,0 +1,28 @@
+{
+  "server": "chrome-devtools, headless",
+  "requestedViewport": [
+    1280,
+    800
+  ],
+  "actualViewport": [
+    768,
+    900
+  ],
+  "note": "resize did not change the reported inner viewport; both samples use the same actual viewport. Static React SSR fixture, not production UI.",
+  "before": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Script ran on page and returned:\n```json\n{\"viewport\":[768,900],\"heading\":{\"tag\":\"H2\",\"text\":\"Hello Ada\",\"margin\":\"0px\"},\"padding\":\"15.999px\",\"contentMargin\":\"16px\",\"kitRadius\":\"8px\",\"internalSpanRadius\":\"6px\",\"total\":\"4\",\"placeholder\":\"Search\"}\n```"
+      }
+    ]
+  },
+  "after": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Script ran on page and returned:\n```json\n{\"viewport\":[768,900],\"heading\":{\"tag\":\"H2\",\"text\":\"Hello Ada\",\"margin\":\"0px\"},\"padding\":\"16px\",\"contentMargin\":\"16px\",\"kitRadius\":\"8px\",\"internalSpanRadius\":\"6px\",\"total\":\"4\",\"placeholder\":\"Search\"}\n```"
+      }
+    ]
+  }
+}

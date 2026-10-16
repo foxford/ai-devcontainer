@@ -1,0 +1,10 @@
+{
+  "index": true,
+  "notes": true,
+  "backend": true,
+  "sameFileUserLine": true,
+  "legacy": true,
+  "UI-decision-code-preserved": true,
+  "recheckedAfterTyping": true,
+  "repeat": true
+}

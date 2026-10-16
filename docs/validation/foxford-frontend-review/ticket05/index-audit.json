@@ -1,0 +1,30 @@
+{
+  "config": "GIT_OPTIONAL_LOCKS=0 git -c diff.autoRefreshIndex=false",
+  "hashes": [
+    [
+      "initial",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ],
+    [
+      "status --short",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ],
+    [
+      "diff --cached",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ],
+    [
+      "diff",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ],
+    [
+      "ls-files --others --exclude-standard",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ],
+    [
+      "final diff",
+      "febd2849263120198e620ff03ee72e96cac41b3fe48387a7bfc4194935f5a293"
+    ]
+  ],
+  "allEqual": true
+}

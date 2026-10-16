@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: before: props, handlers, keys, refs, lifecycle, locale and string API
+ok 1 - before: props, handlers, keys, refs, lifecycle, locale and string API
+  ---
+  duration_ms: 69.108084
+  ...
+# Subtest: after: props, handlers, keys, refs, lifecycle, locale and string API
+ok 2 - after: props, handlers, keys, refs, lifecycle, locale and string API
+  ---
+  duration_ms: 22.031583
+  ...
+# Subtest: mapper: rerenders, dependency refresh and source updates
+ok 3 - mapper: rerenders, dependency refresh and source updates
+  ---
+  duration_ms: 41.128958
+  ...
+# Subtest: signal updates text; use updates branch and boolean attribute
+ok 4 - signal updates text; use updates branch and boolean attribute
+  ---
+  duration_ms: 13.1765
+  ...
+# Subtest: readonly action updates source, derived result and subscribers
+ok 5 - readonly action updates source, derived result and subscribers
+  ---
+  duration_ms: 0.544459
+  ...
+# Subtest: owner destroy calls onDestroy once and makes state unusable
+ok 6 - owner destroy calls onDestroy once and makes state unusable
+  ---
+  duration_ms: 0.244083
+  ...
+# Subtest: auto lifecycle: shared VM survives without permission; enabled unmount destroys
+ok 7 - auto lifecycle: shared VM survives without permission; enabled unmount destroys
+  ---
+  duration_ms: 6.477458
+  ...
+# Subtest: 2.0.2 caveat: rerender after permission cleans up before unmount
+ok 8 - 2.0.2 caveat: rerender after permission cleans up before unmount
+  ---
+  duration_ms: 0.877917
+  ...
+# Subtest: negative fixtures expose stale closure, wrong branch, mapped write and partial cleanup
+ok 9 - negative fixtures expose stale closure, wrong branch, mapped write and partial cleanup
+  ---
+  duration_ms: 8.009375
+  ...
+# Subtest: pure mapper output remains reactive after repeated renders
+ok 10 - pure mapper output remains reactive after repeated renders
+  ---
+  duration_ms: 3.8065
+  ...
+# Subtest: before: combined imports, extraction, i18n and VM subscriptions
+ok 11 - before: combined imports, extraction, i18n and VM subscriptions
+  ---
+  duration_ms: 75.381709
+  ...
+# Subtest: after: combined imports, extraction, i18n and VM subscriptions
+ok 12 - after: combined imports, extraction, i18n and VM subscriptions
+  ---
+  duration_ms: 29.061125
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 584.144958

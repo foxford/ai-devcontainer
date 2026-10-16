@@ -1,0 +1,143 @@
+{
+  "backend-only": {
+    "base": "edc18eb647b7cb7717c3d2c224e4cc9428018995",
+    "fixtureHEAD": "edc18eb647b7cb7717c3d2c224e4cc9428018995",
+    "mode": "read-only",
+    "files": {
+      "PROJECT.md": "server/job.ts is a Node batch job, no browser entry point.\n",
+      "server/job.ts": "export const css = \".card h2 { padding: 20.999px }\";\n"
+    },
+    "diff": "diff --git a/server/job.ts b/server/job.ts\nindex 6cd8f5f..8759fcf 100644\n--- a/server/job.ts\n+++ b/server/job.ts\n@@ -1 +1 @@\n-export const css = \".card h2 { padding: 19.999px }\";\n+export const css = \".card h2 { padding: 20.999px }\";",
+    "gitStatus": "M server/job.ts",
+    "status": "неприменимо",
+    "actual": "PROJECT.md confirms backend; extension .ts and CSS string do not imply frontend.",
+    "beforeHashes": {
+      "PROJECT.md": "ee44b218597bcc2d24719c6c210fff3b7a27188c91ecab1add88c2b1388a1cec",
+      "server/job.ts": "84152b7740f72c1c9bc647780a0b599b2c5f133408c96781f2a5d0035beaa433"
+    },
+    "afterHashes": {
+      "PROJECT.md": "ee44b218597bcc2d24719c6c210fff3b7a27188c91ecab1add88c2b1388a1cec",
+      "server/job.ts": "84152b7740f72c1c9bc647780a0b599b2c5f133408c96781f2a5d0035beaa433"
+    },
+    "indexBefore": "b1ca40cb026115587ac016b9c65dd7d5f3a4bce01ac324a5f5d6a918e17ab9bc",
+    "indexAfter": "b1ca40cb026115587ac016b9c65dd7d5f3a4bce01ac324a5f5d6a918e17ab9bc",
+    "checks": "not run: read-only evaluation, no fixes"
+  },
+  "insufficient": {
+    "base": null,
+    "fixtureHEAD": "4bbd0da3b1858099a59fd8a88e195a3ef6869f45",
+    "mode": "read-only",
+    "files": {
+      "unknown.ts": "export const css = \".card { padding: 19.999px }\";\n"
+    },
+    "diff": "",
+    "gitStatus": "",
+    "status": "неполная проверка",
+    "actual": "No supplied base, task boundaries or consumer evidence for unknown.ts. Request those facts; no assumption of HEAD~1 or backend role.",
+    "beforeHashes": {
+      "unknown.ts": "ab33b7862048a0e419ed14445add6f5ff758bc741cb6c46d36a332502f170521"
+    },
+    "afterHashes": {
+      "unknown.ts": "ab33b7862048a0e419ed14445add6f5ff758bc741cb6c46d36a332502f170521"
+    },
+    "indexBefore": "82072365890326c09eebbbe7b1cb2612834f6ba87540d1718c54e481c44915ef",
+    "indexAfter": "82072365890326c09eebbbe7b1cb2612834f6ba87540d1718c54e481c44915ef",
+    "checks": "not run: read-only evaluation, no fixes"
+  },
+  "project-priority": {
+    "base": "a3895909e6955e0b9f4af384b04cc970610db9ad",
+    "fixtureHEAD": "a3895909e6955e0b9f4af384b04cc970610db9ad",
+    "mode": "read-only",
+    "files": {
+      "AGENTS.md": "client/card.css preserves exact design precision by project agreement. Other CSS uses common rules.\n",
+      "client/card.css": ".card { padding: 15.999px; margin: 7.999px; }\n",
+      "client/new.css": ".new { padding: 19.999px; } /* task target 20px */\n",
+      "client/legacy.css": ".old { padding: 19.999px; }\n"
+    },
+    "diff": "diff --git a/client/card.css b/client/card.css\nindex afc56a9..dba503d 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1 +1 @@\n-.card { padding: 15.999px; }\n+.card { padding: 15.999px; margin: 7.999px; }\ndiff --git a/client/new.css b/client/new.css\nindex d468851..e87aec9 100644\n--- a/client/new.css\n+++ b/client/new.css\n@@ -1 +1 @@\n-.new { padding: 20px; } /* task target 20px */\n+.new { padding: 19.999px; } /* task target 20px */",
+    "gitStatus": "M client/card.css\n M client/new.css",
+    "status": "проверено, остаётся предложение в read-only",
+    "actual": "FF-CSS-001: new card margin exempt by AGENTS.md; new.css:1 introduces 19.999px over base 20px, propose restoring intended 20px. Legacy outside scope is preserved, not an exception for new.css.",
+    "beforeHashes": {
+      "AGENTS.md": "7b092d4c94dc82e200056fdd21982f74aee6c72432357747309d28fa3bbbc3d2",
+      "client/card.css": "576e8895e71403b619aa5d57c7a56d6c68d32c50a4fd231a0a742813ef446158",
+      "client/new.css": "d7d9f286dbf5c4b5f27993e4177acf0e462cfa065b13ac1f792dedecce8ecaf4",
+      "client/legacy.css": "97a4587aa4f42b882ee6970647ed6e3600e04a73b98af4bd2368de2918196a4e"
+    },
+    "afterHashes": {
+      "AGENTS.md": "7b092d4c94dc82e200056fdd21982f74aee6c72432357747309d28fa3bbbc3d2",
+      "client/card.css": "576e8895e71403b619aa5d57c7a56d6c68d32c50a4fd231a0a742813ef446158",
+      "client/new.css": "d7d9f286dbf5c4b5f27993e4177acf0e462cfa065b13ac1f792dedecce8ecaf4",
+      "client/legacy.css": "97a4587aa4f42b882ee6970647ed6e3600e04a73b98af4bd2368de2918196a4e"
+    },
+    "indexBefore": "a7f24530367f9942db2d9f0e65bff2cca1c212bf1f1585cfa64b8e52ee71b801",
+    "indexAfter": "a7f24530367f9942db2d9f0e65bff2cca1c212bf1f1585cfa64b8e52ee71b801",
+    "checks": "not run: read-only evaluation, no fixes",
+    "baseFiles": {
+      "AGENTS.md": "client/card.css preserves exact design precision by project agreement. Other CSS uses common rules.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n",
+      "client/new.css": ".new { padding: 20px; } /* task target 20px */\n",
+      "client/legacy.css": ".old { padding: 19.999px; }\n"
+    },
+    "reviewCorrection": "Initial fixture only added a comment to a pre-existing fraction, so that finding was invalid. Fixed base to 20px, introduced 19.999px in task diff and repeated read-only evaluation."
+  },
+  "accepted-design": {
+    "base": "b14a9d99f0cbc31c3c27d7132f665bcb0e3699db",
+    "fixtureHEAD": "b14a9d99f0cbc31c3c27d7132f665bcb0e3699db",
+    "mode": "read-only",
+    "files": {
+      "PROJECT.md": "Frontend @team/ui v2 Button radius 8px, no radius API. DECISION.md is explicit prior approval only for /checkout default.\n",
+      "DECISION.md": "Developer explicitly approved stock Button radius 8px instead of 6px for /checkout default.\n",
+      "client/view.tsx": "<div className=\"actions\"><Button size=\"small\">Save</Button></div> /* task */\n",
+      "client/style.css": ".actions { display: flex; gap: 8px; }\n"
+    },
+    "diff": "diff --git a/client/view.tsx b/client/view.tsx\nindex b6a53ae..91ac4ce 100644\n--- a/client/view.tsx\n+++ b/client/view.tsx\n@@ -1 +1 @@\n-<div className=\"actions\"><Button size=\"small\">Save</Button></div>\n+<div className=\"actions\"><Button size=\"small\">Save</Button></div> /* task */",
+    "gitStatus": "M client/view.tsx",
+    "status": "проверено",
+    "actual": "FF-UI-001/002: wrapper and public size valid; prior explicit decision permits stock radius only in stated scope. No new approval requested; internal overrides remain forbidden.",
+    "beforeHashes": {
+      "PROJECT.md": "f37d7729665e1f53b55c0e9b40ecf3c231a83eb3ec1936c6166a903fe7442741",
+      "DECISION.md": "0708a315a998f4e9d089803476b6619300c7de48944f503ceaec0b47b064d44c",
+      "client/view.tsx": "920092fd48cf2251059e50e8b02a4c075e5ed00690ba4075579428905ec5af34",
+      "client/style.css": "1e1c499f29e7c7fb1c42c6f8a278c9a4bdbc93a211106bdc64383dc0a2254b34"
+    },
+    "afterHashes": {
+      "PROJECT.md": "f37d7729665e1f53b55c0e9b40ecf3c231a83eb3ec1936c6166a903fe7442741",
+      "DECISION.md": "0708a315a998f4e9d089803476b6619300c7de48944f503ceaec0b47b064d44c",
+      "client/view.tsx": "920092fd48cf2251059e50e8b02a4c075e5ed00690ba4075579428905ec5af34",
+      "client/style.css": "1e1c499f29e7c7fb1c42c6f8a278c9a4bdbc93a211106bdc64383dc0a2254b34"
+    },
+    "indexBefore": "01e66231f73a79f333da77a6aac525d59815535fed77db6c24b36ed3c3d4e480",
+    "indexAfter": "01e66231f73a79f333da77a6aac525d59815535fed77db6c24b36ed3c3d4e480",
+    "checks": "not run: read-only evaluation, no fixes"
+  },
+  "unknown-design": {
+    "base": "895bdfb7edf7ee1c818979c5f6e0dfd1707e8c82",
+    "fixtureHEAD": "895bdfb7edf7ee1c818979c5f6e0dfd1707e8c82",
+    "mode": "read-only",
+    "files": {
+      "PROJECT.md": "Frontend uses @team/ui v2 Button, public size supported; design and measurements unavailable.\n",
+      "client/style.css": ".actions { display: flex; }\n.actions button > span { border-radius: 6px; }\n"
+    },
+    "diff": "diff --git a/client/style.css b/client/style.css\nindex 861a682..e75d85b 100644\n--- a/client/style.css\n+++ b/client/style.css\n@@ -1 +1,2 @@\n .actions { display: flex; }\n+.actions button > span { border-radius: 6px; }",
+    "gitStatus": "M client/style.css",
+    "status": "неполная проверка — требуется решение",
+    "actual": "FF-UI-001 client/style.css:2 is a newly introduced internal selector; propose a verified public API instead. FF-UI-002: request route/state/design measurements and desired outcome; do not invent a difference or accept deviation.",
+    "beforeHashes": {
+      "PROJECT.md": "043f3bbde9f705ebb5a9b99a0bd85774a4499f3443571d5381919b371cc731b7",
+      "client/style.css": "6843369d5344d1e98fd2ba6d8574803775cb40f85b78d46f30144f269963d6a7"
+    },
+    "afterHashes": {
+      "PROJECT.md": "043f3bbde9f705ebb5a9b99a0bd85774a4499f3443571d5381919b371cc731b7",
+      "client/style.css": "6843369d5344d1e98fd2ba6d8574803775cb40f85b78d46f30144f269963d6a7"
+    },
+    "indexBefore": "cbcdde385149b68e6b5e73f4d2cde8eb4147fc5a38726f1aa9855bc1d9fa6e5f",
+    "indexAfter": "cbcdde385149b68e6b5e73f4d2cde8eb4147fc5a38726f1aa9855bc1d9fa6e5f",
+    "checks": "not run: read-only evaluation, no fixes",
+    "baseFiles": {
+      "PROJECT.md": "Frontend uses @team/ui v2 Button, public size supported; design and measurements unavailable.\n",
+      "client/style.css": ".actions { display: flex; }\n"
+    },
+    "reviewCorrection": "Initial fixture only added a comment to an existing override. Replaced base with public layout wrapper, introduced internal selector in task diff, repeated read-only review and preservation audit."
+  }
+}
