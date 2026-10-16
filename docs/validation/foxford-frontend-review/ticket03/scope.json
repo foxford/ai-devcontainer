@@ -1,0 +1,17 @@
+{
+  "base": "6aa6e4c1201959be58858e40879807268fc82ec9",
+  "head": "6aa6e4c1201959be58858e40879807268fc82ec9",
+  "commits": [],
+  "mode": "fix",
+  "task_files": [
+    "internal-class.css",
+    "internal-tag.css",
+    "internal-structure.css",
+    "public.tsx",
+    "wrapper.css",
+    "rich-text.css",
+    "decision.tsx"
+  ],
+  "result": "proposals only; no safe equivalent established",
+  "unchanged": true
+}
