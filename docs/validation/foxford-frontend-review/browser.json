@@ -1,0 +1,23 @@
+{
+  "tool": "Chrome DevTools MCP (headless)",
+  "mixed_before": {
+    "padding": "15.999px",
+    "margin": "7.999px",
+    "color": "rgb(255, 0, 0)"
+  },
+  "mixed_after": {
+    "padding": "16px",
+    "margin": "8px",
+    "color": "rgb(255, 0, 0)",
+    "tag": "H2",
+    "text": "Title",
+    "class": "cardTitle"
+  },
+  "exception_after": {
+    "padding": "15.999px",
+    "margin": "7.999px",
+    "color": "rgb(255, 0, 0)",
+    "tag": "H2",
+    "text": "Title"
+  }
+}

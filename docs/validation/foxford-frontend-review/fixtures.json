@@ -1,0 +1,156 @@
+{
+  "mixed": {
+    "base": "f9a1dff08ea198e389e0f48016a409e0f38d7f83",
+    "head": "7d0d174979008883240721a04ec89e76ec5b2344",
+    "before": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n.card .label { margin: 7.999px; }\n.card h2 { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 23.999px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "after": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 16px; }\n.card .label { margin: 8px; }\n.card .cardTitle { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 24px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2 class=\"cardTitle\">Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "committed_diff": "diff --git a/client/card.css b/client/card.css\nindex 5e7de65..32dd90d 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n-.card { padding: 8px; }\n+.card { padding: 15.999px; }\n .card .label { margin: 8px; }\n",
+    "staged_diff": "diff --git a/client/card.css b/client/card.css\nindex 32dd90d..dbe2057 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n .card { padding: 15.999px; }\n-.card .label { margin: 8px; }\n+.card .label { margin: 7.999px; }\n",
+    "working_diff": "diff --git a/client/card.css b/client/card.css\nindex dbe2057..4ed9ca7 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,6 @@\n-.card { padding: 15.999px; }\n-.card .label { margin: 7.999px; }\n+.card { padding: 16px; }\n+.card .label { margin: 8px; }\n+.card .cardTitle { color: red; }\n+/* DPR 2 hairline */\n+.separator { border-width: 0.5px; }\n+.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\ndiff --git a/client/page.html b/client/page.html\nindex 76b7282..be8a0a3 100644\n--- a/client/page.html\n+++ b/client/page.html\n@@ -1 +1 @@\n-<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n+<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2 class=\"cardTitle\">Title</h2><span class=\"label\">Label</span></div>\ndiff --git a/server/handler.ts b/server/handler.ts\nindex 5101272..d84bb29 100644\n--- a/server/handler.ts\n+++ b/server/handler.ts\n@@ -1 +1 @@\n-export const payload = \"padding: 3.333px; div > p { color: red; }\";\n+export const payload = \"padding: 9.999px; div > p { color: red; }\";\ndiff --git a/user-notes.css b/user-notes.css\nindex e5e2084..2f662ae 100644\n--- a/user-notes.css\n+++ b/user-notes.css\n@@ -1,2 +1,2 @@\n-/* unrelated user work */\n+/* unrelated user work, modified */\n .note { margin: 5.555px; }\n",
+    "index_bytes_preserved": true
+  },
+  "exception": {
+    "base": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "head": "59aa1f2fe3ede4bcb5349b63b027e26539a052f1",
+    "before": {
+      ".gitignore": ".agents/\nBASE\n",
+      "AGENTS.md": "Documented project convention for this evaluation: client/card.css preserves exact fractional px from the design, including ordinary padding and margin. This exception applies only to that file. Other CSS follows team rules.\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n.card .label { margin: 7.999px; }\n.card h2 { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 23.999px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "after": {
+      ".gitignore": ".agents/\nBASE\n",
+      "AGENTS.md": "Documented project convention for this evaluation: client/card.css preserves exact fractional px from the design, including ordinary padding and margin. This exception applies only to that file. Other CSS follows team rules.\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n.card .label { margin: 7.999px; }\n.card .cardTitle { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 24px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2 class=\"cardTitle\">Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "committed_diff": "diff --git a/client/card.css b/client/card.css\nindex 5e7de65..32dd90d 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n-.card { padding: 8px; }\n+.card { padding: 15.999px; }\n .card .label { margin: 8px; }\n",
+    "staged_diff": "diff --git a/client/card.css b/client/card.css\nindex 32dd90d..dbe2057 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n .card { padding: 15.999px; }\n-.card .label { margin: 8px; }\n+.card .label { margin: 7.999px; }\n",
+    "working_diff": "diff --git a/client/card.css b/client/card.css\nindex dbe2057..6de8505 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,6 @@\n .card { padding: 15.999px; }\n .card .label { margin: 7.999px; }\n+.card .cardTitle { color: red; }\n+/* DPR 2 hairline */\n+.separator { border-width: 0.5px; }\n+.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\ndiff --git a/client/page.html b/client/page.html\nindex 76b7282..be8a0a3 100644\n--- a/client/page.html\n+++ b/client/page.html\n@@ -1 +1 @@\n-<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n+<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2 class=\"cardTitle\">Title</h2><span class=\"label\">Label</span></div>\ndiff --git a/server/handler.ts b/server/handler.ts\nindex 5101272..d84bb29 100644\n--- a/server/handler.ts\n+++ b/server/handler.ts\n@@ -1 +1 @@\n-export const payload = \"padding: 3.333px; div > p { color: red; }\";\n+export const payload = \"padding: 9.999px; div > p { color: red; }\";\ndiff --git a/user-notes.css b/user-notes.css\nindex e5e2084..2f662ae 100644\n--- a/user-notes.css\n+++ b/user-notes.css\n@@ -1,2 +1,2 @@\n-/* unrelated user work */\n+/* unrelated user work, modified */\n .note { margin: 5.555px; }\n",
+    "index_bytes_preserved": true
+  },
+  "readonly": {
+    "base": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "head": "59aa1f2fe3ede4bcb5349b63b027e26539a052f1",
+    "before": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n.card .label { margin: 7.999px; }\n.card h2 { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 23.999px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "after": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 15.999px; }\n.card .label { margin: 7.999px; }\n.card h2 { color: red; }\n/* DPR 2 hairline */\n.separator { border-width: 0.5px; }\n.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/new.css": ".new { padding: 23.999px; }\n/* CMS article HTML */\n.articleBody p { margin: 8px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "client/reset.css": "/* global reset */\nhtml, body { margin: 0; }\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work, modified */\n.note { margin: 5.555px; }\n"
+    },
+    "committed_diff": "diff --git a/client/card.css b/client/card.css\nindex 5e7de65..32dd90d 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n-.card { padding: 8px; }\n+.card { padding: 15.999px; }\n .card .label { margin: 8px; }\n",
+    "staged_diff": "diff --git a/client/card.css b/client/card.css\nindex 32dd90d..dbe2057 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,2 @@\n .card { padding: 15.999px; }\n-.card .label { margin: 8px; }\n+.card .label { margin: 7.999px; }\n",
+    "working_diff": "diff --git a/client/card.css b/client/card.css\nindex dbe2057..a1d6d97 100644\n--- a/client/card.css\n+++ b/client/card.css\n@@ -1,2 +1,6 @@\n .card { padding: 15.999px; }\n .card .label { margin: 7.999px; }\n+.card h2 { color: red; }\n+/* DPR 2 hairline */\n+.separator { border-width: 0.5px; }\n+.text { line-height: 1.5; width: 33.333%; transform: rotate(22.5deg); }\ndiff --git a/user-notes.css b/user-notes.css\nindex e5e2084..2f662ae 100644\n--- a/user-notes.css\n+++ b/user-notes.css\n@@ -1,2 +1,2 @@\n-/* unrelated user work */\n+/* unrelated user work, modified */\n .note { margin: 5.555px; }\n",
+    "index_bytes_preserved": true
+  },
+  "backend": {
+    "base": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "head": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "before": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 8px; }\n.card .label { margin: 8px; }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work */\n.note { margin: 5.555px; }\n"
+    },
+    "after": {
+      ".gitignore": ".agents/\nBASE\n",
+      "README.md": "Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+      "client/card.css": ".card { padding: 8px; }\n.card .label { margin: 8px; }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "user-notes.css": "/* unrelated user work */\n.note { margin: 5.555px; }\n"
+    },
+    "committed_diff": "",
+    "staged_diff": "",
+    "working_diff": "",
+    "index_bytes_preserved": true
+  },
+  "insufficient": {
+    "base": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "head": "2f6266cbe2d2d17c6bd0a745b9f0c696937ebfaf",
+    "before": {
+      ".gitignore": ".agents/\nBASE\n",
+      "client/card.css": ".card { padding: 8px; }\n.card .label { margin: 8px; }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "unknown/value.ts": "export const rule = \"padding: 11.999px\";\n",
+      "user-notes.css": "/* unrelated user work */\n.note { margin: 5.555px; }\n"
+    },
+    "after": {
+      ".gitignore": ".agents/\nBASE\n",
+      "client/card.css": ".card { padding: 8px; }\n.card .label { margin: 8px; }\n",
+      "client/legacy.css": ".legacy { padding: 6.777px; }\n",
+      "client/page.html": "<!doctype html><link rel=\"stylesheet\" href=\"card.css\"><div class=\"card\"><h2>Title</h2><span class=\"label\">Label</span></div>\n",
+      "contract.test.cjs": "const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');test('semantic content and CSS boundary',()=>{const html=fs.readFileSync('client/page.html','utf8');assert.match(html,/<h2[^>]*>Title<\\/h2>/);assert.match(html,/Label/);const css=fs.readFileSync('client/card.css','utf8');assert.match(css,/padding:/);});\n",
+      "server/handler.ts": "export const payload = \"padding: 9.999px; div > p { color: red; }\";\n",
+      "unknown/value.ts": "export const rule = \"padding: 11.999px\";\n",
+      "user-notes.css": "/* unrelated user work */\n.note { margin: 5.555px; }\n"
+    },
+    "committed_diff": "",
+    "staged_diff": "",
+    "working_diff": "diff --git a/README.md b/README.md\ndeleted file mode 100644\nindex 0433642..0000000\n--- a/README.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-Evaluation fixture. client/ is browser frontend. server/ is Node HTTP backend; CSS strings there are payload examples, not rendered UI. Node built-in tests: node --test. No TypeScript build or external dependencies.\n",
+    "index_bytes_preserved": true
+  }
+}
