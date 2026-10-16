@@ -1,0 +1,10 @@
+{
+  "valid/Combined.tsx": "0e7fcf50633af22c48b380ba0ffb345b88a97570b81d047a9839e492beaaf53b",
+  "valid/Once.ts": "d68aeaf821c96acb4748ffdac9321b6535e7d3fdb7a0855499aa669f31b97a19",
+  "ambiguous/Write.ts": "5c9aa04c8ea5967948663c4df097deb2b0ca250975f4ac951579163dfcb57137",
+  "ambiguous/Child.tsx": "59b2abe24e34243d7d04a0a324b3b19aabf43cfeec4746a5e3eb7959d079fd24",
+  "no-vm/Counter.tsx": "ac35fb4be6c899f18175c2101d70e0b04b8dd81690174b6e6f84c500845680e8",
+  "no-vm/package.json": "6345ca4bbabd67df13d31c9654b9213f917b85d9f0e26013a35be5e84a47cc1d",
+  "unknown/Unknown.tsx": "d5c7b777b223439256c9901c1c5405b067819ee29dd1be1c807ccc7991ee5b26",
+  "unknown/package.json": "89729608e6e2090cd92a6b52b21eac43f33c01272a1bb48ec5c123bc41e899cc"
+}

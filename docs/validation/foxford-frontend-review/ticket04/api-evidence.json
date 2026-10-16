@@ -1,0 +1,11 @@
+{
+  "package": "@foxford/vm",
+  "version": "2.0.2",
+  "source_commit": "c678dff25f62aa53b53190e8c46263d1a4be2c9f",
+  "installed_file_sha256": {
+    "package.json": "830359cfb484848e9379328b000780b8471f52fd60354fa2508c7671aa85aaa0",
+    "index.d.ts": "8486e07cc96b738954d147ad19993d0f6f3e91736c74b649361371922c972d81",
+    "index.js": "663223ffa331bab3f14eaa92633e0582feebbbe6b75cb63bcee06e27aeac6c26",
+    "README.mdx": "ccb277d8e5f15e33f4371eaec17efa47171213dfe3ba4bbfdbd11eef2729584c"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "fixture": "before/ -> after/",
+  "api": "@foxford/vm@2.0.2",
+  "mode": "fix",
+  "scope": "client/*.tsx and model.cjs; notes.txt excluded",
+  "base": "ce1938884c00e7014da43779d94c24217b64875b",
+  "head": "ce1938884c00e7014da43779d94c24217b64875b",
+  "contracts": {
+    "setDoubled": "Set displayed doubled count to next; source count accepts finite numbers. Inverse next/2.",
+    "finish": "Scenario owner terminates VM and calls onDestroy."
+  }
+}

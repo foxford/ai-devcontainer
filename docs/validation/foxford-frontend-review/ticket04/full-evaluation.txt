@@ -1,0 +1,18 @@
+✔ before: props, handlers, keys, refs, lifecycle, locale and string API (70.549833ms)
+✔ after: props, handlers, keys, refs, lifecycle, locale and string API (14.681291ms)
+✔ mapper: rerenders, dependency refresh and source updates (38.263125ms)
+✔ signal updates text; use updates branch and boolean attribute (13.210125ms)
+✔ readonly action updates source, derived result and subscribers (0.617459ms)
+✔ owner destroy calls onDestroy once and makes state unusable (0.22925ms)
+✔ auto lifecycle: shared VM survives without permission; enabled unmount destroys (5.6ms)
+✔ 2.0.2 caveat: rerender after permission cleans up before unmount (0.594875ms)
+✔ negative fixtures expose stale closure, wrong branch, mapped write and partial cleanup (5.525583ms)
+✔ pure mapper output remains reactive after repeated renders (2.504209ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 501.60325

@@ -1,0 +1,85 @@
+
+│
+●   codex  Agent detected — installing non-interactively
+[?25l│
+◇  Source: /Users/user/Work/ai-devcontainer/delivery/skills/foxford-frontend-review
+[?25h[?25l│
+◇  Local path validated
+[?25h[?25l│
+◇  Found 1 skill
+[?25h│
+●  Skill: foxford-frontend-review
+│
+│  Проверка frontend-изменений задачи по командному CODESTYLE.md с исправлением однозначных нарушений; по явному запросу — отчёт без изменений. Можно вызвать отдельно или из review/implementation workflow.
+
+│
+◇  Installation Summary ─────────────────────╮
+│                                            │
+│  ./.agents/skills/foxford-frontend-review  │
+│    copy → Claude Code, Codex               │
+│                                            │
+├────────────────────────────────────────────╯
+[?25l│
+◇  Installation complete
+[?25h
+│
+◇  Installed 1 skill ────────────────────────────╮
+│                                                │
+│  ✓ foxford-frontend-review (copied)            │
+│    → ./.claude/skills/foxford-frontend-review  │
+│    → ./.agents/skills/foxford-frontend-review  │
+│                                                │
+├────────────────────────────────────────────────╯
+
+│
+└  Done!  Review skills before use; they run with full agent permissions.
+
+[
+  {
+    "name": "foxford-frontend-review",
+    "path": "/private/var/folders/wh/gxrpjz7d4js_5kdyr1hpd6n40000gp/T/ff-vm-review-qz2x013i/.agents/skills/foxford-frontend-review",
+    "scope": "project",
+    "agents": [
+      "Claude Code",
+      "Codex",
+      "OpenCode"
+    ]
+  }
+]
+
+│
+●   codex  Agent detected — installing non-interactively
+[?25l│
+◇  Source: /Users/user/Work/ai-devcontainer/delivery/skills/foxford-frontend-review
+[?25h[?25l│
+◇  Local path validated
+[?25h[?25l│
+◇  Found 1 skill
+[?25h│
+●  Skill: foxford-frontend-review
+│
+│  Проверка frontend-изменений задачи по командному CODESTYLE.md с исправлением однозначных нарушений; по явному запросу — отчёт без изменений. Можно вызвать отдельно или из review/implementation workflow.
+
+│
+◇  Installation Summary ─────────────────────╮
+│                                            │
+│  ./.agents/skills/foxford-frontend-review  │
+│    copy → Claude Code, Codex               │
+│    overwrites: Claude Code, Codex          │
+│                                            │
+├────────────────────────────────────────────╯
+[?25l│
+◇  Installation complete
+[?25h
+│
+◇  Installed 1 skill ────────────────────────────╮
+│                                                │
+│  ✓ foxford-frontend-review (copied)            │
+│    → ./.claude/skills/foxford-frontend-review  │
+│    → ./.agents/skills/foxford-frontend-review  │
+│                                                │
+├────────────────────────────────────────────────╯
+
+│
+└  Done!  Review skills before use; they run with full agent permissions.
+

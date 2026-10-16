@@ -1,0 +1,8 @@
+{
+  "rev-parse HEAD": "ce1938884c00e7014da43779d94c24217b64875b\n",
+  "status --short": "?? .agents/\n?? .claude/\n?? ambiguous.txt\n?? client/\n?? model.cjs\n?? notes.txt\n?? skills-lock.json\n",
+  "diff HEAD...HEAD": "",
+  "diff --cached": "",
+  "diff": "",
+  "ls-files --others --exclude-standard": ".agents/skills/foxford-frontend-review/CODESTYLE.md\n.agents/skills/foxford-frontend-review/SKILL.md\n.agents/skills/foxford-frontend-review/USAGE.md\n.agents/skills/foxford-frontend-review/meta.json\n.claude/skills/foxford-frontend-review/CODESTYLE.md\n.claude/skills/foxford-frontend-review/SKILL.md\n.claude/skills/foxford-frontend-review/USAGE.md\n.claude/skills/foxford-frontend-review/meta.json\nambiguous.txt\nclient/Controls.tsx\nclient/Owner.tsx\nclient/Text.tsx\nclient/Total.tsx\nmodel.cjs\nnotes.txt\nskills-lock.json\n"
+}

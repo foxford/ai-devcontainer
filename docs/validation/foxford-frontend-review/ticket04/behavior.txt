@@ -1,0 +1,16 @@
+✔ mapper: rerenders, dependency refresh and source updates (32.674333ms)
+✔ signal updates text; use updates branch and boolean attribute (11.842917ms)
+✔ readonly action updates source, derived result and subscribers (0.560458ms)
+✔ owner destroy calls onDestroy once and makes state unusable (0.22175ms)
+✔ auto lifecycle: shared VM survives without permission; enabled unmount destroys (5.236208ms)
+✔ 2.0.2 caveat: rerender after permission cleans up before unmount (0.55275ms)
+✔ negative fixtures expose stale closure, wrong branch, mapped write and partial cleanup (4.626584ms)
+✔ pure mapper output remains reactive after repeated renders (2.318708ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 331.60675
