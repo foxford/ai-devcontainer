@@ -1,0 +1,1 @@
+registry/index.ts registers consumers that import this module during initialization. Import registry/token directly here to avoid the initialization cycle. @team/ui exports ./button as a public subpath. catalog is a module with index.ts as its public contract; its implementation imports model directly.
