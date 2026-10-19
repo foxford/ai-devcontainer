@@ -50,7 +50,14 @@ func toolsHome() string {
 
 func installerEnv(home, tools string) []string {
 	// Detection must see actual CLIs, never ADC's agent adapters.
-	path := strings.Join([]string{filepath.Join(tools, "bin"), filepath.Join(home, ".local", "bin"), filepath.Join(home, ".opencode", "bin"), "/usr/local/bin", "/usr/sbin", "/usr/bin", "/bin", "/usr/local/cargo/bin", "/usr/local/bun/bin"}, string(os.PathListSeparator))
+	paths := []string{filepath.Join(tools, "bin"), filepath.Join(home, ".local", "bin")}
+	for _, driver := range agentDrivers() {
+		for _, path := range driver.Context().InstallerPaths {
+			paths = append(paths, filepath.Join(home, path))
+		}
+	}
+	paths = append(paths, "/usr/local/bin", "/usr/sbin", "/usr/bin", "/bin", "/usr/local/cargo/bin", "/usr/local/bun/bin")
+	path := strings.Join(paths, string(os.PathListSeparator))
 	return replaceEnv(os.Environ(), map[string]string{"ADC_DELIVERY": "1", "PATH": path, "NPM_CONFIG_PREFIX": tools, "NPM_CONFIG_FETCH_RETRIES": "4", "NPM_CONFIG_FETCH_RETRY_FACTOR": "2", "NPM_CONFIG_FETCH_RETRY_MINTIMEOUT": "1000", "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT": "8000", "UV_HTTP_RETRIES": "4", "GIT_HTTP_LOW_SPEED_LIMIT": "1", "GIT_HTTP_LOW_SPEED_TIME": "30", "GIT_TERMINAL_PROMPT": "0", "UV_INSTALL_DIR": filepath.Join(tools, "bin"), "INSTALLER_NO_MODIFY_PATH": "1", "GRAPHIFY_NO_AUTO_REFRESH": "1", "GRAPHIFY_NO_TIPS": "1", "UV_TOOL_BIN_DIR": filepath.Join(tools, "bin"), "UV_TOOL_DIR": filepath.Join(tools, "uv-tools")})
 }
 
@@ -220,6 +227,10 @@ func (i *toolInstaller) works(name string) bool {
 	return err == nil
 }
 func (i *toolInstaller) vendor(url, shell string) error {
+	return i.vendorWithRunner(url, shell, i.run)
+}
+
+func (i *toolInstaller) vendorWithRunner(url, shell string, run func(string, string, ...string) ([]byte, error)) error {
 	data, err := i.fetch(url)
 	if err != nil {
 		return err
@@ -236,11 +247,8 @@ func (i *toolInstaller) vendor(url, shell string) error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	run := i.run
-	// OpenCode's release lookup uses curl -s under set -euo pipefail.
-	// DNS failure exits with curl's code 6 but produces no diagnostic output.
-	if url == "https://opencode.ai/install" && i.runVendor != nil {
-		run = i.runVendor
+	if run == nil {
+		run = i.run
 	}
 	_, err = run(i.home, shell, file.Name())
 	return err
@@ -270,48 +278,9 @@ func (i *toolInstaller) install() error {
 	if err := os.MkdirAll(filepath.Join(i.tools, "bin"), 0755); err != nil {
 		return err
 	}
-	if err := i.installClaude(); err != nil {
-		return err
-	}
-	for _, tool := range []struct{ name, url, source string }{
-		{"opencode", "https://opencode.ai/install", filepath.Join(i.home, ".opencode", "bin", "opencode")},
-		{"hermes", "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh", filepath.Join(i.home, ".local", "bin", "hermes")},
-	} {
-		if i.works(tool.name) {
-			fmt.Fprintln(i.out, tool.name, "уже установлен")
-			continue
-		}
-		fmt.Fprintln(i.out, "Установка", tool.name)
-		if tool.name == "hermes" {
-			if err := os.RemoveAll(filepath.Join(i.home, ".hermes", "hermes-agent")); err != nil {
-				return err
-			}
-		}
-		if err := i.vendor(tool.url, "bash"); err != nil {
-			return fmt.Errorf("%s: %w", tool.name, err)
-		}
-		if err := i.promote(tool.name, tool.source); err != nil {
+	for _, driver := range agentDrivers() {
+		if err := driver.Install(i); err != nil {
 			return err
-		}
-		if !i.works(tool.name) {
-			return fmt.Errorf("%s установлен, но --version не работает", tool.name)
-		}
-	}
-	if !i.works("codex") {
-		if _, err := i.run(i.home, "npm", "install", "-g", "@openai/codex"); err != nil {
-			return err
-		}
-		if !i.works("codex") {
-			return errors.New("Codex не запускается после установки")
-		}
-	}
-	if !i.works("dsh") {
-		_, err := i.run(i.home, "npm", "install", "-g", "--allow-scripts=@deepseek-ai/dsh-subprocess-local,node-pty,koffi", "@deepseek-ai/dsh")
-		if err != nil {
-			_, err = i.run(i.home, "npm", "install", "-g", "@deepseek-ai/dsh")
-		}
-		if err != nil {
-			fmt.Fprintln(i.out, "DSH не установлен:", err)
 		}
 	}
 	if !i.works("uv") {
@@ -356,29 +325,6 @@ func (i *toolInstaller) install() error {
 		return err
 	}
 	fmt.Fprintln(i.out, "Инструменты ADC готовы")
-	return nil
-}
-
-func (i *toolInstaller) installClaude() error {
-	if i.works("claude") {
-		fmt.Fprintln(i.out, "claude уже установлен")
-		return nil
-	}
-	fmt.Fprintln(i.out, "Установка claude через npm")
-	// Replace only broken launchers; keep all agent configuration and sessions.
-	for _, file := range []string{filepath.Join(i.tools, "bin", "claude"), filepath.Join(i.home, ".local", "bin", "claude")} {
-		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	// The official package contains the native binary as an optional dependency.
-	// Its postinstall links that binary; no vendor curl download is needed.
-	if _, err := i.run(i.home, "npm", "install", "-g", "--include=optional", "--allow-scripts=@anthropic-ai/claude-code", "@anthropic-ai/claude-code"); err != nil {
-		return fmt.Errorf("установка Claude через npm: %w", err)
-	}
-	if !i.works("claude") {
-		return errors.New("Claude установлен, но --version не работает")
-	}
 	return nil
 }
 

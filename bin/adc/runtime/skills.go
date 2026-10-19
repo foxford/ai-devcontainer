@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -14,8 +13,6 @@ import (
 )
 
 const skillMarker = ".ai-devcontainer-wired"
-
-var dshSkillName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type skillLayers struct{ stock, project string }
 
@@ -164,7 +161,7 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 	if err != nil {
 		return err
 	}
-	dest := filepath.Join(root, ".claude", "skills")
+	dest := composedSkillsPath(root)
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
@@ -262,52 +259,12 @@ func (a *App) DeliverSkills(root string, selected ...[]string) error {
 	if err := shared.AtomicWrite(filepath.Join(root, "AGENTS.skills.md"), []byte(index.String()), 0644); err != nil {
 		return err
 	}
-	dsh := filepath.Join(root, ".dsh", "skills")
-	if err := os.MkdirAll(dsh, 0755); err != nil {
-		return err
-	}
-	entries, err = os.ReadDir(dsh)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		path := filepath.Join(dsh, entry.Name())
-		link, err := os.Readlink(path)
-		if err == nil && managedDSHLink(root, entry.Name(), link) && !live[entry.Name()] {
-			if err := os.Remove(path); err != nil {
-				return err
-			}
-		}
-	}
-	for name := range live {
-		if !dshSkillName.MatchString(name) {
-			fmt.Fprintln(os.Stderr, "DSH: имя не kebab-case:", name)
-			continue
-		}
-		path := filepath.Join(dsh, name)
-		if _, err := os.Lstat(path); err == nil {
-			link, err := os.Readlink(path)
-			if err != nil || !managedDSHLink(root, name, link) {
-				continue
-			}
-		}
-		if err := replaceLink(path, filepath.Join("..", "..", ".claude", "skills", name)); err != nil {
+	for _, driver := range agentDrivers() {
+		if err := driver.ProjectSkills(root, live); err != nil {
 			return err
 		}
 	}
 	return shared.ManagedBlock(filepath.Join(root, "AGENTS.md"), "<!-- adc:skills:start -->", "<!-- adc:skills:end -->", "Скиллы и их область применения: [AGENTS.skills.md](AGENTS.skills.md).")
-}
-
-func managedDSHLink(root, name, link string) bool {
-	if !filepath.IsAbs(link) {
-		link = filepath.Join(root, ".dsh", "skills", link)
-	}
-	for _, base := range []string{root, "/workspaces/" + filepath.Base(root)} {
-		if filepath.Clean(link) == filepath.Join(base, ".claude", "skills", name) {
-			return true
-		}
-	}
-	return false
 }
 
 func frontmatterField(text, key string) string {

@@ -124,7 +124,8 @@ func TestCodexDriverHeadersRotatePreserveManualAndRetry(t *testing.T) {
 		t.Fatal("CLI failure ignored")
 	}
 	state, _, err := readMCPState(p.RuntimePath)
-	if err != nil || !shared.Contains(state.CodexHeaders, namespace+"-service") || shared.Contains(state.CodexHeaders, manual) {
+	private, privateErr := decodeCodexState(state.forDriver("codex"))
+	if err != nil || privateErr != nil || !shared.Contains(private.Headers, namespace+"-service") || shared.Contains(private.Headers, manual) {
 		t.Fatal("retry ownership includes foreign headers or lost managed headers")
 	}
 	t.Setenv("ADC_CODEX_FAIL", "")
@@ -194,6 +195,7 @@ func TestCodexDriverNativeCLI(t *testing.T) {
 	if binary == "" {
 		t.Skip("set ADC_NATIVE_CODEX to verify a native Codex CLI")
 	}
+	originalPath := os.Getenv("PATH")
 	a, p, store := mcpFixture(t)
 	home, _ := os.UserHomeDir()
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
@@ -201,7 +203,8 @@ func TestCodexDriverNativeCLI(t *testing.T) {
 	if err := os.Symlink(binary, filepath.Join(directory, "codex")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", directory)
+	// Installed Codex may use a Node launcher; retain its runtime dependencies.
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+originalPath)
 	writeFixture(t, filepath.Join(store, "servers.json"), `{"mcpServers":{"native":{"url":"http://127.0.0.1:9/mcp/","headers":{"Authorization":"Bearer fixture-native-key"}}}}`)
 	for i := 0; i < 2; i++ {
 		if err := a.DeliverMCP(p); err != nil {

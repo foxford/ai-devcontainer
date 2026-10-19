@@ -198,7 +198,7 @@ func TestClaudeInstallerPreservesProfilesAndRequiresWorkingCLI(t *testing.T) {
 				writeFixture(t, launcher, "npm launcher")
 				return nil, nil
 			}
-			err := i.installClaude()
+			err := (claudeDriver{}).Install(&i)
 			if (err != nil) != (tc.installFails || tc.broken) {
 				t.Fatalf("unexpected outcome: %v", err)
 			}

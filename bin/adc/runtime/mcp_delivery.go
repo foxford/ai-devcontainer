@@ -4,20 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
-	"go.yaml.in/yaml/v3"
 )
-
-type mcpState struct {
-	Version      int      `json:"version"`
-	Servers      []string `json:"servers"`
-	ClaudeOwned  bool     `json:"claudeOwned"`
-	CodexHeaders []string `json:"codexHeaders,omitempty"`
-}
 
 func secureWrite(path string, data []byte) error {
 	if err := shared.AtomicWrite(path, data, 0600); err != nil {
@@ -38,337 +28,12 @@ func (a *App) ensureProjectSecrets(root string) error {
 	// AtomicWrite replaces a symlink instead of chmod/writing into its source.
 	return secureWrite(path, data)
 }
-func readMCPState(root string) (mcpState, bool, error) {
-	if err := shared.MigrateProjectState(root); err != nil {
-		return mcpState{}, false, err
-	}
-	state := mcpState{Version: 1, Servers: []string{}}
-	data, err := os.ReadFile(filepath.Join(root, shared.ProjectStateDir, "mcp-state.json"))
-	if err == nil {
-		if err := json.Unmarshal(data, &state); err != nil {
-			return state, false, err
-		}
-		if state.Version != 1 {
-			return state, false, fmt.Errorf("неподдерживаемая версия MCP state")
-		}
-		return state, true, nil
-	}
-	if !os.IsNotExist(err) {
-		return state, false, err
-	}
-	// Preserve ownership and stale names from the previous delivery engine.
-	data, err = os.ReadFile(filepath.Join(root, shared.ProjectStateDir, "mcp-state"))
-	if err == nil {
-		state.Servers = strings.Fields(string(data))
-		state.ClaudeOwned = true
-		return state, true, nil
-	}
-	if !os.IsNotExist(err) {
-		return state, false, err
-	}
-	return state, false, nil
-}
-
-func yamlMapping(path string) (*yaml.Node, error) {
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	var document yaml.Node
-	if len(data) > 0 {
-		if err := yaml.Unmarshal(data, &document); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-	}
-	if len(document.Content) == 0 || document.Content[0].Tag == "!!null" {
-		document = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}}
-	}
-	if document.Content[0].Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%s должен содержать YAML объект", path)
-	}
-	return &document, nil
-}
-func yamlDelete(mapping *yaml.Node, key string) {
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key {
-			mapping.Content = append(mapping.Content[:index], mapping.Content[index+2:]...)
-			return
-		}
-	}
-}
-func hermesMCP(path string, servers map[string]MCPServer, previous []string) ([]byte, error) {
-	document, err := yamlMapping(path)
-	if err != nil {
-		return nil, err
-	}
-	mapping := document.Content[0]
-	current := yamlField(mapping, "mcp_servers")
-	if current == nil || current.Tag == "!!null" {
-		current = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		yamlSet(mapping, "mcp_servers", current)
-	}
-	if current.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%s: mcp_servers должен быть объектом", path)
-	}
-	for _, name := range previous {
-		if _, ok := servers[name]; !ok {
-			yamlDelete(current, name)
-		}
-	}
-	for _, name := range sortedKeys(servers) {
-		data, err := yaml.Marshal(map[string]any(servers[name]))
-		if err != nil {
-			return nil, err
-		}
-		var server yaml.Node
-		if err := yaml.Unmarshal(data, &server); err != nil {
-			return nil, err
-		}
-		yamlSet(current, name, server.Content[0])
-	}
-	return yaml.Marshal(document)
-}
-
-func composeBlock(original, start, end, body string) (string, error) {
-	begin, finish := strings.Index(original, start), strings.Index(original, end)
-	if (begin >= 0) != (finish >= 0) || finish >= 0 && finish < begin {
-		return "", fmt.Errorf("незавершённый управляемый блок %s", start)
-	}
-	block := ""
-	if body != "" {
-		block = start + "\n" + strings.TrimRight(body, "\n") + "\n" + end + "\n"
-	}
-	if begin >= 0 {
-		return strings.TrimRight(original[:begin]+block+original[finish+len(end):], "\n") + "\n", nil
-	}
-	if block == "" {
-		return original, nil
-	}
-	return strings.TrimRight(original, "\n") + "\n\n" + block, nil
-}
-func dshName(name string) string {
-	if len(name) <= 32 {
-		return name
-	}
-	return name[:23] + "-" + shared.CheckoutID(name)
-}
-func dshMCP(path, namespace, root string, servers map[string]MCPServer, oauth map[string]bool) ([]byte, error) {
-	original, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	items := []map[string]any{}
-	for _, name := range sortedKeys(servers) {
-		if oauth[name] {
-			continue
-		}
-		server := servers[name]
-		config := map[string]any{"serverName": dshName(name)}
-		if url, _ := server["url"].(string); url != "" {
-			config["transport"] = "streamable-http"
-			config["url"] = url
-			if headers, ok := server["headers"]; ok {
-				config["headers"] = headers
-			}
-		} else {
-			command, _ := server["command"].(string)
-			if command == "" {
-				continue
-			}
-			config["transport"] = "stdio"
-			config["command"] = command
-			config["cwd"] = root
-			config["args"] = []any{}
-			if args, ok := server["args"]; ok {
-				config["args"] = args
-			}
-			if env, ok := server["env"]; ok {
-				config["env"] = env
-			}
-		}
-		items = append(items, map[string]any{"insert": []map[string]any{{"id": "ai-devcontainer-mcp-" + name, "name": "@deepseek-ai/dsh-mcp-client", "config": config}}})
-	}
-	body := ""
-	if len(items) > 0 {
-		data, err := yaml.Marshal(items)
-		if err != nil {
-			return nil, err
-		}
-		body = string(data)
-	}
-	// Empty YAML list is a placeholder, not a list item to append patches to.
-	text := string(original)
-	var parsed any
-	if err := yaml.Unmarshal(original, &parsed); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	if list, ok := parsed.([]any); ok && len(list) == 0 {
-		lines := strings.Split(text, "\n")
-		kept := []string{}
-		for _, line := range lines {
-			if strings.TrimSpace(line) != "[]" {
-				kept = append(kept, line)
-			}
-		}
-		text = strings.Join(kept, "\n")
-	}
-	start, end := "# ai-devcontainer:mcp:"+namespace+":start", "# ai-devcontainer:mcp:"+namespace+":end"
-	result, err := composeBlock(text, start, end, body)
-	if err != nil {
-		return nil, err
-	}
-	if err := yaml.Unmarshal([]byte(result), &parsed); err != nil {
-		return nil, fmt.Errorf("DSH patch не записан: %w", err)
-	}
-	if parsed != nil {
-		if _, ok := parsed.([]any); !ok {
-			return nil, fmt.Errorf("DSH patch должен содержать список")
-		}
-	}
-	return []byte(result), nil
-}
-
-func codexConfigPath(home string) string {
-	root := os.Getenv("CODEX_HOME")
-	if root == "" {
-		root = filepath.Join(home, ".codex")
-	}
-	return filepath.Join(root, "config.toml")
-}
-
-func codexEntryKind(path, name string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "none"
-	}
-	found, headers, ours := false, false, false
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "[") {
-			section := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
-			ours = section == "mcp_servers."+name || section == "mcp_servers.\""+name+"\"" || strings.HasPrefix(section, "mcp_servers."+name+".") || strings.HasPrefix(section, "mcp_servers.\""+name+"\".")
-			found = found || ours
-		}
-		if ours && strings.Contains(line, "http_headers") {
-			headers = true
-		}
-	}
-	if headers {
-		return "headers"
-	}
-	if found {
-		return "other"
-	}
-	return "none"
-}
-
-func syncCodex(servers map[string]MCPServer, previous []string, oauth map[string]bool, ownedHeaders []string) error {
-	binary, err := exec.LookPath("codex")
-	if err != nil {
-		return nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	config := codexConfigPath(home)
-	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
-		return err
-	}
-	call := func(args ...string) error {
-		cmd := exec.Command(binary, args...)
-		cmd.Env = append(os.Environ(), "ADC_DELIVERY=1")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("Codex MCP: %w", err)
-		}
-		return nil
-	}
-	for _, name := range previous {
-		if _, ok := servers[name]; !ok {
-			kind := codexEntryKind(config, name)
-			if kind == "headers" && !shared.Contains(ownedHeaders, name) {
-				continue
-			}
-			if kind != "none" {
-				if err := call("mcp", "remove", name); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	for _, name := range sortedKeys(servers) {
-		server := servers[name]
-		if oauth[name] {
-			fmt.Fprintln(os.Stderr, "Codex: OAuth MCP", name, "добавляется и авторизуется вручную")
-			continue
-		}
-		args := []string{"mcp", "add", name}
-		if url, _ := server["url"].(string); url != "" {
-			if headers, ok := server["headers"].(map[string]any); ok && len(headers) > 0 {
-				kind := codexEntryKind(config, name)
-				if kind == "headers" && !shared.Contains(ownedHeaders, name) {
-					// Retain an explicitly configured human entry.
-					continue
-				}
-				if kind != "none" {
-					if err := call("mcp", "remove", name); err != nil {
-						return err
-					}
-				}
-				if err := call("mcp", "add", name, "--url", url); err != nil {
-					return err
-				}
-				data, err := os.ReadFile(config)
-				if err != nil {
-					return err
-				}
-				// Secret headers go directly into the private file, never CLI argv.
-				quoted, _ := json.Marshal(name)
-				var block strings.Builder
-				fmt.Fprintf(&block, "\n[mcp_servers.%s.http_headers]\n", quoted)
-				for _, key := range sortedKeys(headers) {
-					value, ok := headers[key].(string)
-					if !ok {
-						return fmt.Errorf("MCP %s: HTTP header должен быть строкой", name)
-					}
-					k, _ := json.Marshal(key)
-					v, _ := json.Marshal(value)
-					fmt.Fprintf(&block, "%s = %s\n", k, v)
-				}
-				if err := secureWrite(config, append(data, block.String()...)); err != nil {
-					return err
-				}
-				continue
-			}
-			args = append(args, "--url", url)
-		} else {
-			if env, ok := server["env"].(map[string]any); ok {
-				for _, key := range sortedKeys(env) {
-					args = append(args, "--env", key+"="+fmt.Sprint(env[key]))
-				}
-			}
-			command, _ := server["command"].(string)
-			if command == "" {
-				continue
-			}
-			args = append(args, "--", command)
-			if values, ok := server["args"].([]any); ok {
-				for _, value := range values {
-					args = append(args, fmt.Sprint(value))
-				}
-			}
-		}
-		if err := call(args...); err != nil {
-			return err
-		}
-	}
-	if _, err := os.Stat(config); err == nil {
-		return os.Chmod(config, 0600)
-	}
-	return nil
-}
 
 func (a *App) DeliverMCP(p shared.Project) error {
+	return a.deliverMCP(p, agentDrivers())
+}
+
+func (a *App) deliverMCP(p shared.Project, drivers []agentDriver) error {
 	if p.ReadOnly {
 		return os.ErrPermission
 	}
@@ -379,7 +44,7 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	if err != nil {
 		return err
 	}
-	state, exists, err := readMCPState(p.RuntimePath)
+	state, _, err := readMCPState(p.RuntimePath)
 	if err != nil {
 		return err
 	}
@@ -396,76 +61,108 @@ func (a *App) DeliverMCP(p shared.Project) error {
 	if err != nil {
 		return err
 	}
-	claude := filepath.Join(p.RuntimePath, ".mcp.json")
-	if !exists {
-		if _, err := os.Lstat(claude); os.IsNotExist(err) {
-			state.ClaudeOwned = true
-		} else if err != nil {
-			return err
-		}
+	registry, err := a.mcpRegistry(p, state)
+	if err != nil {
+		return err
 	}
-	// Checkpoint ownership and the union of old/new names before any agent write.
-	// If an external CLI fails, the next sync can retry and still remove stale names.
-	managedHeaders := []string{}
-	config := codexConfigPath(home)
-	for _, name := range sortedKeys(servers) {
-		server := servers[name]
-		address, _ := server["url"].(string)
-		headers, _ := server["headers"].(map[string]any)
-		if address != "" && len(headers) > 0 && !oauth[name] && (shared.Contains(state.CodexHeaders, name) || codexEntryKind(config, name) != "headers") {
-			managedHeaders = append(managedHeaders, name)
-		}
+	return a.applyAgentDelivery(agentDelivery{Project: p, Home: home, Namespace: namespace, Servers: servers, OAuth: oauth}, state, registry, drivers)
+}
+
+func copyDriverStates(states map[string]agentRecord) map[string]agentRecord {
+	result := make(map[string]agentRecord, len(states))
+	for name, state := range states {
+		result[name] = agentRecord{Servers: append([]string{}, state.Servers...), State: append(json.RawMessage(nil), state.State...)}
 	}
-	ownedHeaders := append([]string{}, state.CodexHeaders...)
-	for _, name := range managedHeaders {
-		if !shared.Contains(ownedHeaders, name) {
-			ownedHeaders = append(ownedHeaders, name)
-		}
-	}
-	delivery := agentDelivery{Project: p, Home: home, Namespace: namespace, Servers: servers, OAuth: oauth, Previous: state, Headers: ownedHeaders}
-	var commits []func() error
-	for _, driver := range agentDrivers() {
-		commit, err := driver.Prepare(delivery)
-		if err != nil {
-			return fmt.Errorf("%s: %w", driver.Name(), err)
-		}
-		commits = append(commits, commit)
-	}
-	pending := state
-	for _, name := range managedHeaders {
-		if !shared.Contains(pending.CodexHeaders, name) {
-			pending.CodexHeaders = append(pending.CodexHeaders, name)
-		}
-	}
+	return result
+}
+
+// All adapters prepare before any writes. Pending ownership survives partial
+// commits; final ownership is published only after every adapter succeeds.
+func (a *App) applyAgentDelivery(delivery agentDelivery, state mcpState, registry []checkoutMCPState, drivers []agentDriver) error {
+	pending, final := state, state
+	pending.Version, final.Version = 2, 2
+	pending.Drivers, final.Drivers = copyDriverStates(state.Drivers), copyDriverStates(state.Drivers)
 	names := map[string]bool{}
 	for _, name := range state.Servers {
 		names[name] = true
 	}
-	for name := range servers {
+	for name := range delivery.Servers {
 		names[name] = true
 	}
-	pending.Servers = sortedKeys(names)
-	checkpoint, err := json.MarshalIndent(pending, "", "  ")
-	if err != nil {
-		return err
+	pending.Servers, final.Servers = sortedKeys(names), sortedKeys(delivery.Servers)
+	preparations := make([]agentPreparation, 0, len(drivers))
+	seen := map[string]bool{}
+	for _, driver := range drivers {
+		name := driver.Name()
+		if name == "" || seen[name] {
+			return fmt.Errorf("некорректное или повторное имя agent driver: %q", name)
+		}
+		seen[name] = true
+		input := delivery
+		// Native conversion must not mutate the plan seen by another adapter.
+		input.Servers = make(map[string]MCPServer, len(delivery.Servers))
+		for server, config := range delivery.Servers {
+			input.Servers[server] = MCPServer(mergeObject(nil, map[string]any(config)))
+		}
+		input.OAuth = make(map[string]bool, len(delivery.OAuth))
+		for server, enabled := range delivery.OAuth {
+			input.OAuth[server] = enabled
+		}
+		input.Previous = state.forDriver(name)
+		input.Registry = make([]agentCheckout, 0, len(registry))
+		for _, checkout := range registry {
+			input.Registry = append(input.Registry, agentCheckout{Namespace: checkout.Namespace, State: checkout.State.forDriver(name)})
+		}
+		prepared, err := driver.Prepare(input)
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		if prepared.Commit == nil {
+			return fmt.Errorf("%s: отсутствует операция применения", name)
+		}
+		for _, data := range []json.RawMessage{prepared.PendingState, prepared.FinalState} {
+			if len(data) > 0 && !json.Valid(data) {
+				return fmt.Errorf("%s: некорректное состояние драйвера", name)
+			}
+		}
+		previous := state.forDriver(name)
+		owned := map[string]bool{}
+		for _, server := range previous.Servers {
+			owned[server] = true
+		}
+		for server := range delivery.Servers {
+			owned[server] = true
+		}
+		pendingRecord := agentRecord{Servers: sortedKeys(owned), State: previous.Data}
+		finalRecord := agentRecord{Servers: sortedKeys(delivery.Servers), State: previous.Data}
+		// A stateless adapter does not erase state belonging to an earlier version.
+		if len(prepared.PendingState) > 0 {
+			pendingRecord.State = append(json.RawMessage(nil), prepared.PendingState...)
+		}
+		if len(prepared.FinalState) > 0 {
+			finalRecord.State = append(json.RawMessage(nil), prepared.FinalState...)
+		}
+		pending.Drivers[name], final.Drivers[name] = pendingRecord, finalRecord
+		preparations = append(preparations, prepared)
 	}
-	statePath := filepath.Join(p.RuntimePath, shared.ProjectStateDir, "mcp-state.json")
-	if err := secureWrite(statePath, append(checkpoint, '\n')); err != nil {
-		return err
-	}
-	if err := a.ensureProjectSecrets(p.RuntimePath); err != nil {
-		return err
-	}
-	for _, commit := range commits {
-		if err := commit(); err != nil {
+	statePath := filepath.Join(delivery.Project.RuntimePath, shared.ProjectStateDir, "mcp-state.json")
+	write := func(state mcpState) error {
+		data, err := json.MarshalIndent(state, "", "  ")
+		if err != nil {
 			return err
 		}
+		return secureWrite(statePath, append(data, '\n'))
 	}
-	state.Servers = sortedKeys(servers)
-	state.CodexHeaders = managedHeaders
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
+	if err := write(pending); err != nil {
 		return err
 	}
-	return secureWrite(statePath, append(data, '\n'))
+	if err := a.ensureProjectSecrets(delivery.Project.RuntimePath); err != nil {
+		return err
+	}
+	for index, prepared := range preparations {
+		if err := prepared.Commit(); err != nil {
+			return fmt.Errorf("%s: %w", drivers[index].Name(), err)
+		}
+	}
+	return write(final)
 }

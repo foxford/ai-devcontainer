@@ -63,22 +63,13 @@ func (a *App) WriteMap(c shared.Config) error {
 	if e = shared.AtomicWrite("/workspace/AGENTS.md", append([]byte(shared.Marker+"Прочитай [карту всех проектов](AGENTS.workspace.md), затем AGENTS.md затронутых репозиториев.\n\n"), core...), 0644); e != nil {
 		return e
 	}
-	if e = shared.AtomicWrite("/workspace/CLAUDE.md", []byte(shared.Marker+"@AGENTS.md\n@AGENTS.workspace.md\n"), 0644); e != nil {
-		return e
-	}
 	// Every starting directory gets a managed global entry pointing at the map;
 	// project rules are read locally. No repo can replace another repo's home.
-	for _, pair := range [][2]string{{".codex/AGENTS.md", ""}, {".claude/CLAUDE.md", "@/workspace/AGENTS.md\n@/workspace/AGENTS.workspace.md\n"}, {".hermes/AGENTS.md", ""}} {
-		home, _ := os.UserHomeDir()
-		body := pair[1]
-		if body == "" {
-			body = "Прочитай /workspace/AGENTS.md и /workspace/AGENTS.workspace.md. Для изменений в проекте прочитай его AGENTS.md и AGENTS.platform.md. Проектные скиллы: его AGENTS.skills.md; выбирай форки только в их области. MCP с префиксом project/checkоut относится к указанному checkout.\n"
-		}
-		if e = shared.ManagedBlock(filepath.Join(home, pair[0]), "<!-- adc:workspace:start -->", "<!-- adc:workspace:end -->", body); e != nil {
-			return e
-		}
+	home, e := os.UserHomeDir()
+	if e != nil {
+		return e
 	}
-	return nil
+	return writeWorkspaceAgentContext("/workspace", home, agentDrivers())
 }
 
 type projectSyncError struct{ error }
@@ -197,7 +188,7 @@ func (a *App) SyncProject(p shared.Project) error {
 	var b strings.Builder
 	b.WriteString(shared.Marker)
 	b.Write(core)
-	fmt.Fprintf(&b, "\n## Этот checkout\n\nProject: `%s`. Path: `%s`. MCP namespace: `%s-`.\n\nПрочитай `/workspace/AGENTS.workspace.md`, чтобы видеть остальные проекты и источники знаний. Проектные скиллы перечислены в AGENTS.skills.md; читай соответствующий SKILL.md из .claude/skills.\n", p.ID, root, namespace)
+	fmt.Fprintf(&b, "\n## Этот checkout\n\nProject: `%s`. Path: `%s`. MCP namespace: `%s-`.\n\nПрочитай `/workspace/AGENTS.workspace.md`, чтобы видеть остальные проекты и источники знаний. Проектные скиллы перечислены в AGENTS.skills.md; читай соответствующий SKILL.md по ссылке в этом индексе.\n", p.ID, root, namespace)
 	target := filepath.Join(root, "AGENTS.platform.md")
 	old, e := os.ReadFile(target)
 	if e == nil && !strings.Contains(string(old), "ai-devcontainer:generated") {
@@ -206,14 +197,8 @@ func (a *App) SyncProject(p shared.Project) error {
 	if e = shared.AtomicWrite(target, []byte(b.String()), 0644); e != nil {
 		return e
 	}
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-		body := "Прочитай [контракт ADC](AGENTS.platform.md) и [все проекты](/workspace/AGENTS.workspace.md). Правила этого файла и вложенных AGENTS.md сохраняют область действия."
-		if name == "CLAUDE.md" {
-			body = "@AGENTS.platform.md\n@/workspace/AGENTS.workspace.md\n@AGENTS.md"
-		}
-		if e = shared.ManagedBlock(filepath.Join(root, name), "<!-- adc:context:start -->", "<!-- adc:context:end -->", body); e != nil {
-			return e
-		}
+	if e = writeProjectAgentContext(root, agentDrivers()); e != nil {
+		return e
 	}
 	if e = wireOrca(root); e != nil {
 		return e
@@ -236,7 +221,11 @@ func (a *App) ignoreProject(p shared.Project) error {
 		return e
 	}
 	ignore := filepath.Join(root, ".gitignore")
-	patterns := []string{"/.adc/", "/.ai-devcontainer/", "/AGENTS.platform.md", "/AGENTS.skills.md", "/.claude/skills/", "/.dsh/skills/", "/.mcp.json", "/.agents/mcp.local.json", "/.agents/mcp.secrets.env"}
+	patterns := []string{"/.adc/", "/.ai-devcontainer/", "/AGENTS.platform.md", "/AGENTS.skills.md", "/.agents/mcp.local.json", "/.agents/mcp.secrets.env"}
+	patterns = append(patterns, "/"+filepath.ToSlash(composedSkillsPath(""))+"/")
+	for _, driver := range agentDrivers() {
+		patterns = append(patterns, driver.Context().IgnorePatterns...)
+	}
 	if shared.Contains(capabilities, "graphify") {
 		patterns = append(patterns, "/graphify-out/", "/.graphify-cache/", "/.graphify_cache/")
 	}
@@ -271,9 +260,8 @@ func (a *App) syncGraph(p shared.Project) {
 	}
 }
 func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
-	home, _ := os.UserHomeDir()
-	dest := filepath.Join(home, ".codex", "skills")
-	if e := os.MkdirAll(dest, 0755); e != nil {
+	home, e := os.UserHomeDir()
+	if e != nil {
 		return e
 	}
 	// Common skills are the platform layer, independent of the sync order.
@@ -285,28 +273,41 @@ func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
 	if e != nil {
 		return e
 	}
-	for _, d := range entries {
-		if !d.IsDir() {
+	var destinations []agentSkillDestination
+	for _, driver := range agentDrivers() {
+		destinations = append(destinations, driver.Context().Skills...)
+	}
+	for _, destination := range destinations {
+		if !destination.Common {
 			continue
 		}
-		target := filepath.Join(dest, d.Name())
-		if info, e := os.Lstat(target); e == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
+		dest := filepath.Join(home, destination.Path)
+		if e = os.MkdirAll(dest, 0755); e != nil {
+			return e
+		}
+		for _, d := range entries {
+			if !d.IsDir() {
 				continue
 			}
-			link, _ := os.Readlink(target)
-			link = filepath.Clean(link)
-			platformLink := strings.HasPrefix(link, filepath.Clean(a.Platform)+string(os.PathSeparator))
-			deliveryLink := filepath.IsAbs(a.State) && strings.HasPrefix(link, filepath.Join(a.State, "delivery")+string(os.PathSeparator))
-			if !platformLink && !deliveryLink {
-				continue
+			target := filepath.Join(dest, d.Name())
+			if info, e := os.Lstat(target); e == nil {
+				if info.Mode()&os.ModeSymlink == 0 {
+					continue
+				}
+				link, _ := os.Readlink(target)
+				link = filepath.Clean(link)
+				platformLink := strings.HasPrefix(link, filepath.Clean(a.Platform)+string(os.PathSeparator))
+				deliveryLink := filepath.IsAbs(a.State) && strings.HasPrefix(link, filepath.Join(a.State, "delivery")+string(os.PathSeparator))
+				if !platformLink && !deliveryLink {
+					continue
+				}
+				if e = os.Remove(target); e != nil {
+					return e
+				}
 			}
-			if e = os.Remove(target); e != nil {
+			if e = os.Symlink(filepath.Join(a.shared().DeliveryPath(catalog.Base.Skills), d.Name()), target); e != nil {
 				return e
 			}
-		}
-		if e = os.Symlink(filepath.Join(a.shared().DeliveryPath(catalog.Base.Skills), d.Name()), target); e != nil {
-			return e
 		}
 	}
 	// Scoped adapters have unique frontmatter names and direct the agent to the
@@ -315,7 +316,11 @@ func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
 	if e != nil && !os.IsNotExist(e) {
 		return e
 	}
-	for _, dest := range []string{dest, filepath.Join(home, ".hermes", "skills"), filepath.Join(home, ".config", "opencode", "skills")} {
+	for _, destination := range destinations {
+		if !destination.Scoped {
+			continue
+		}
+		dest := filepath.Join(home, destination.Path)
 		if e = os.MkdirAll(dest, 0755); e != nil {
 			return e
 		}
@@ -334,7 +339,7 @@ func (a *App) PublishProjectSkills(p shared.Project, namespace string) error {
 		for skill := range names {
 			name := namespace + "--" + skill
 			present[name] = true
-			path := filepath.Join(p.RuntimePath, ".claude", "skills", skill, "SKILL.md")
+			path := filepath.Join(composedSkillsPath(p.RuntimePath), skill, "SKILL.md")
 			body := fmt.Sprintf("---\nname: %s\ndescription: 'Project %s only. Use the project variant of %s when working in %s.'\n---\n\nRead `%s` and use its sibling references/scripts. Apply only inside `%s`.\n", name, p.ID, skill, strings.ReplaceAll(p.RuntimePath, "'", "''"), path, p.RuntimePath)
 			if e = shared.AtomicWrite(filepath.Join(dest, name, "SKILL.md"), []byte(body), 0644); e != nil {
 				return e
@@ -362,20 +367,21 @@ func (a *App) Init() error {
 	if e != nil {
 		return e
 	}
-	for _, dir := range []string{".codex", ".claude", ".hermes", ".dsh"} {
-		home, _ := os.UserHomeDir()
-		if e = os.MkdirAll(filepath.Join(home, dir), 0700); e != nil {
-			return e
+	home, e := os.UserHomeDir()
+	if e != nil {
+		return e
+	}
+	for _, driver := range agentDrivers() {
+		for _, dir := range driver.Context().HomeDirectories {
+			if e = os.MkdirAll(filepath.Join(home, dir), 0700); e != nil {
+				return e
+			}
 		}
 	}
 	if os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
 		if e = a.InstallTools(); e != nil {
 			return e
 		}
-	}
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return e
 	}
 	if e = initializeShells(home, "/opt/adc-shell"); e != nil {
 		return e

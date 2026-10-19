@@ -10,7 +10,7 @@ import (
 
 func (a *App) Agent(args []string) error {
 	if len(args) == 0 {
-		return errors.New("adc agent <claude|codex|opencode|hermes|dsh> [arguments...]")
+		return errors.New("adc agent <" + strings.Join(agentNames(), "|") + "> [arguments...]")
 	}
 	name, argv := args[0], args[1:]
 	if len(argv) > 0 && argv[0] == "--" {
@@ -24,15 +24,7 @@ func (a *App) Agent(args []string) error {
 	if _, err := os.Stat(real); err != nil {
 		return err
 	}
-	administrative := os.Getenv("ADC_DELIVERY") == "1"
-	for _, arg := range argv {
-		if arg == "--version" || arg == "--help" || arg == "-h" {
-			administrative = true
-		}
-	}
-	if len(argv) > 0 && shared.Contains([]string{"mcp", "login", "logout", "auth", "skills", "setup", "config"}, argv[0]) {
-		administrative = true
-	}
+	administrative := os.Getenv("ADC_DELIVERY") == "1" || driver.Administrative(argv)
 	if !administrative {
 		dir, _ := os.Getwd()
 		root, err := shared.Output(dir, "git", "rev-parse", "--show-toplevel")

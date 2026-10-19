@@ -20,6 +20,9 @@ import (
 	"github.com/foxford/ai-devcontainer/bin/adc/internal/legacy"
 )
 
+// The v0 archive schema is fixed, independent of the current adapter registry.
+var legacyAuthFiles = []string{".codex/auth.json", ".claude.json", ".claude/.credentials.json", ".hermes/auth.json", ".hermes/.env", ".dsh/.env"}
+
 // LegacyArchive streams a mount without following links. A changed regular file
 // fails the snapshot instead of returning a deceptively successful tar.
 func LegacyArchive(root string, out io.Writer, selected ...string) error {
@@ -319,7 +322,7 @@ func ImportLegacy(dir, account, home, tools string, uid, gid int) error {
 					return fmt.Errorf("неизвестная ссылка авторизации Hermes для %s; сохранена в backup", project)
 				}
 				hermesLinks[project] = true
-			} else if shared.Contains(authFiles, normalized) || normalized == ".local/share/opencode/auth.json" {
+			} else if shared.Contains(legacyAuthFiles, normalized) || normalized == ".local/share/opencode/auth.json" {
 				return fmt.Errorf("ссылка авторизации %s:%s требует отдельного разрешения; оригинал сохранён в backup", project, normalized)
 			}
 			return nil
@@ -353,7 +356,7 @@ func ImportLegacy(dir, account, home, tools string, uid, gid int) error {
 			return nil
 		}
 		copied[key] = true
-		if h.Mode&0100 != 0 && !shared.Contains(authFiles, normalized) {
+		if h.Mode&0100 != 0 && !shared.Contains(legacyAuthFiles, normalized) {
 			if err = os.Chmod(filepath.Join(homeStage, filepath.FromSlash(profile)), 0700); err != nil {
 				return err
 			}
@@ -375,7 +378,7 @@ func ImportLegacy(dir, account, home, tools string, uid, gid int) error {
 			}
 			if !ok {
 				report.Conflicts = append(report.Conflicts, project+":"+normalized)
-			} else if h.Mode&0100 != 0 && !shared.Contains(authFiles, normalized) {
+			} else if h.Mode&0100 != 0 && !shared.Contains(legacyAuthFiles, normalized) {
 				if err = os.Chmod(filepath.Join(homeStage, filepath.FromSlash(normalized)), 0700); err != nil {
 					return err
 				}

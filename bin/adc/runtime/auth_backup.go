@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-var authFiles = []string{".codex/auth.json", ".claude.json", ".claude/.credentials.json", ".hermes/auth.json", ".hermes/.env", ".dsh/.env"}
-
 type authBackup struct {
 	Existed map[string]bool `json:"existed"`
 }

@@ -360,6 +360,20 @@ func TestDockerWorkspace(t *testing.T) {
 	codexConfig := execNode("cat", "/home/node/.codex/config.toml")
 	assertContains(codexConfig, "http_headers")
 	assertContains(codexConfig, "Bearer adc-fixture-key")
+	assertContains(codexConfig, "enabled = false")
+	codexScope := read(filepath.Join(projectA, ".codex", "config.toml"))
+	assertContains(codexScope, "enabled = true")
+	assertContains(codexScope, "-obsidian")
+	if strings.Contains(codexScope, "adc-fixture-key") || strings.Contains(codexScope, "app-b-") {
+		t.Fatal("Codex project scope contains a secret or another project's MCP")
+	}
+	assertContains(read(filepath.Join(projectA, ".adc", "hermes-managed", "config.yaml")), "Bearer adc-fixture-key")
+	assertContains(read(filepath.Join(projectA, ".adc", "dsh-mcp.patch.yml")), "Bearer adc-fixture-key")
+	for _, path := range []string{"/home/node/.hermes/config.yaml", "/home/node/.dsh/cordis.patch.yml"} {
+		if strings.Contains(execNode("cat", path), "adc-fixture-key") {
+			t.Fatal("project MCP leaked into a shared agent config")
+		}
+	}
 	assertContains(read(filepath.Join(projectA, ".adc", "opencode.json")), "\"remote\"")
 	assertContains(read(filepath.Join(projectA, ".mcp.json")), "Bearer adc-fixture-key")
 	run(root, "#!/bin/sh\nprintf '%s' \"$OPENCODE_CONFIG_CONTENT\" > /tmp/adc-opencode-env.json\nprintf 'ADC_OPENCODE_STARTED\\n'\n", "docker", "exec", "-i", "--user", "node", container, "sh", "-c", "cat > /opt/ai-tools/bin/opencode; chmod +x /opt/ai-tools/bin/opencode")

@@ -18,6 +18,9 @@ func mcpFixture(t *testing.T) (*App, shared.Project, string) {
 	t.Helper()
 	home := testutil.Home(t)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	t.Setenv("HERMES_HOME", filepath.Join(home, ".hermes"))
+	t.Setenv("DSH_HOME", filepath.Join(home, ".dsh"))
+	t.Setenv("HERMES_MANAGED_DIR", t.TempDir())
 	store := t.TempDir()
 	t.Setenv("AI_DEVCONTAINER_MCP_STORE", store)
 	// Agent config tests must not invoke a CLI installed on the developer's machine.
@@ -188,8 +191,18 @@ func TestMCPDeliveryPreservesOtherCheckoutsAndForeignClaude(t *testing.T) {
 	}
 	servers := config["mcp_servers"].(map[string]any)
 	ours, theirs := p.ID+"-"+shared.CheckoutID(p.RuntimePath)+"-service", other.ID+"-"+shared.CheckoutID(other.RuntimePath)+"-service"
-	if config["model"] != "keep" || servers["personal"] == nil || servers[ours] == nil || servers[theirs] == nil {
-		t.Fatalf("shared home lost another project's or personal settings: %#v", config)
+	if config["model"] != "keep" || servers["personal"] == nil || servers[ours] != nil || servers[theirs] != nil {
+		t.Fatal("shared home lost personal settings or contains project MCP")
+	}
+	for _, project := range []shared.Project{p, other} {
+		scoped := readFixture(t, filepath.Join(hermesManagedPath(project.RuntimePath), "config.yaml"))
+		want, absent := ours, theirs
+		if project.ID == other.ID {
+			want, absent = theirs, ours
+		}
+		if !strings.Contains(scoped, want) || strings.Contains(scoped, absent) {
+			t.Fatal("Hermes config leaked another checkout")
+		}
 	}
 	writeFixture(t, filepath.Join(p.RuntimePath, ".agents", "mcp.local.json"), `{"mcpServers":{"service":null}}`)
 	if err := a.DeliverMCP(p); err != nil {
@@ -199,12 +212,18 @@ func TestMCPDeliveryPreservesOtherCheckoutsAndForeignClaude(t *testing.T) {
 		t.Fatal(err)
 	}
 	servers = config["mcp_servers"].(map[string]any)
-	if servers[ours] != nil || servers[theirs] == nil || servers["personal"] == nil {
+	if servers[ours] != nil || servers[theirs] != nil || servers["personal"] == nil {
 		t.Fatal("cleanup removed the wrong checkout's servers")
 	}
+	if strings.Contains(readFixture(t, filepath.Join(hermesManagedPath(p.RuntimePath), "config.yaml")), ours) || !strings.Contains(readFixture(t, filepath.Join(hermesManagedPath(other.RuntimePath), "config.yaml")), theirs) {
+		t.Fatal("Hermes scoped cleanup changed the wrong checkout")
+	}
 	patch := readFixture(t, filepath.Join(home, ".dsh", "cordis.patch.yml"))
-	if !strings.Contains(patch, "# personal patches") || !strings.Contains(patch, theirs) || strings.Contains(patch, ours) {
+	if !strings.Contains(patch, "# personal patches") || strings.Contains(patch, theirs) || strings.Contains(patch, ours) {
 		t.Fatalf("DSH patch ownership failed: %s", patch)
+	}
+	if strings.Contains(readFixture(t, dshScopedPath(p.RuntimePath)), ours) || !strings.Contains(readFixture(t, dshScopedPath(other.RuntimePath)), theirs) {
+		t.Fatal("DSH scoped cleanup changed the wrong checkout")
 	}
 }
 
@@ -319,7 +338,8 @@ func TestMCPDeliveryRetriesAfterCodexFailure(t *testing.T) {
 		t.Fatal("external CLI failure was ignored")
 	}
 	state, exists, err := readMCPState(p.RuntimePath)
-	if err != nil || !exists || !state.ClaudeOwned || len(state.Servers) != 1 {
+	private, privateErr := decodeClaudeState(state.forDriver("claude"))
+	if err != nil || privateErr != nil || !exists || !private.Owned || len(state.Servers) != 1 {
 		t.Fatalf("failed sync lost file ownership or server names: %#v %v", state, err)
 	}
 	writeFixture(t, filepath.Join(store, "servers.json"), `{"mcpServers":{"service":{"command":"runner","args":["after"]}}}`)
