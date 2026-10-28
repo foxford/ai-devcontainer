@@ -39,14 +39,15 @@ type Project struct {
 	ReadOnly     bool        `json:"readOnly,omitempty"`
 }
 type Config struct {
-	Version       int         `json:"version"`
-	Name          string      `json:"name"`
-	Port          int         `json:"port"`
-	OmniRoutePort int         `json:"omniroutePort,omitempty"`
-	GraphPort     int         `json:"graphPort,omitempty"`
-	USBDevices    []string    `json:"usbDevices,omitempty"`
-	Projects      []Project   `json:"projects"`
-	Knowledge     []Knowledge `json:"knowledge,omitempty"`
+	Version        int           `json:"version"`
+	Name           string        `json:"name"`
+	Port           int           `json:"port"`
+	OmniRoutePort  int           `json:"omniroutePort,omitempty"`
+	GraphPort      int           `json:"graphPort,omitempty"`
+	USBDevices     []string      `json:"usbDevices,omitempty"`
+	PublishedPorts []PortMapping `json:"publishedPorts,omitempty"`
+	Projects       []Project     `json:"projects"`
+	Knowledge      []Knowledge   `json:"knowledge,omitempty"`
 }
 type App struct {
 	Platform, State string
@@ -74,7 +75,7 @@ func (c Config) ValidatePorts() error {
 		}
 		seen[port] = true
 	}
-	return nil
+	return c.ValidatePublishedPorts()
 }
 
 func New() (*App, error) {

@@ -7,6 +7,7 @@ import (
 	shared "github.com/foxford/ai-devcontainer/bin/adc/internal"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -143,6 +144,13 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 	args := []string{"run", "-d", "--init", "--name", a.shared().Container(c), "--label", "adc.workspace=" + c.Name, "--restart", "unless-stopped", "-p", fmt.Sprintf("127.0.0.1:%d:6768", c.Port), "--add-host", "host.docker.internal:host-gateway", "-e", "ADC_RUNTIME=1", "-e", fmt.Sprintf("ADC_ORCA_PORT=%d", c.Port), "-e", "ADC_HOME=/var/lib/adc", "-e", "AI_DEVCONTAINER_HOME=/opt/ai-devcontainer", "-e", "LIBGL_ALWAYS_SOFTWARE=1", "--mount", "type=volume,src=adc-" + c.Name + "-home,dst=/home/node", "--mount", "type=volume,src=adc-" + c.Name + "-tools,dst=/opt/ai-tools", "--mount", "type=volume,src=adc-" + c.Name + "-worktrees,dst=/workspace"}
 	args = append(args, "--security-opt", "seccomp="+a.dockerSeccompPath())
 	args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:20128", c.GatewayPort()), "-p", fmt.Sprintf("127.0.0.1:%d:4242", c.PreviewPort()))
+	// The order in which mappings were entered does not change the published
+	// endpoints and must not recreate an otherwise unchanged workspace.
+	publications := append([]shared.PortMapping(nil), c.PublishedPorts...)
+	sort.Slice(publications, func(i, j int) bool { return publications[i].HostPort < publications[j].HostPort })
+	for _, publication := range publications {
+		args = append(args, "-p", publication.String())
+	}
 	for _, pair := range [][2]string{{a.Platform, "/opt/ai-devcontainer"}, {a.State, "/var/lib/adc"}} {
 		v, e := mount(pair[0], pair[1], pair[1] == "/opt/ai-devcontainer")
 		if e != nil {

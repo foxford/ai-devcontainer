@@ -150,9 +150,9 @@ func TestWorkspaceConfigHelpAndCompletion(t *testing.T) {
 			t.Fatal("config help missing apply guidance", help.String())
 		}
 		if command == "config" {
-			for _, flag := range []string{"--usb", "--usb-clear", "VID:PID"} {
+			for _, flag := range []string{"--usb", "--usb-clear", "VID:PID", "--publish", "--publish-clear", "HOST:CONTAINER", "127.0.0.1"} {
 				if !strings.Contains(help.String(), flag) {
-					t.Fatalf("config help missing USB guidance %s: %s", flag, help.String())
+					t.Fatalf("config help missing guidance %s: %s", flag, help.String())
 				}
 			}
 		}
@@ -226,7 +226,68 @@ func TestWorkspaceUSBConfigCLI(t *testing.T) {
 	}
 }
 
-func TestWorkspaceUSBFlagCompletion(t *testing.T) {
+func TestWorkspacePublishedPortsConfigCLI(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	t.Setenv("ADC_HOME", t.TempDir())
+	if err := Run([]string{"workspace", "init", "configured"}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := shared.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	for _, tc := range []struct {
+		args     []string
+		mappings []shared.PortMapping
+		usb      []string
+	}{
+		{[]string{"--publish", "3000:3000", "--publish=0.0.0.0:8080:8000", "--usb", "2104:0313"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 3000, ContainerPort: 3000}, {HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 8000}}, []string{"2104:0313"}},
+		{[]string{"--usb=1234:5678"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 3000, ContainerPort: 3000}, {HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 8000}}, []string{"1234:5678"}},
+		{[]string{"--publish=[::1]:8081:8000"}, []shared.PortMapping{{HostIP: "::1", HostPort: 8081, ContainerPort: 8000}}, []string{"1234:5678"}},
+		{[]string{"--publish-clear=false"}, []shared.PortMapping{{HostIP: "::1", HostPort: 8081, ContainerPort: 8000}}, []string{"1234:5678"}},
+		{[]string{"--publish-clear"}, nil, []string{"1234:5678"}},
+		{nil, nil, []string{"1234:5678"}},
+	} {
+		root := commandTree()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetArgs(append([]string{"workspace", "config"}, tc.args...))
+		if err := root.Execute(); err != nil {
+			t.Fatalf("args=%v err=%v", tc.args, err)
+		}
+		got, err := a.Load()
+		if err != nil || !reflect.DeepEqual(got.PublishedPorts, tc.mappings) || !reflect.DeepEqual(got.USBDevices, tc.usb) {
+			t.Fatalf("args=%v config=%+v err=%v", tc.args, got, err)
+		}
+		if !strings.Contains(out.String(), "Пользовательские TCP-порты") {
+			t.Fatal("missing published ports output", out.String())
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--publish"}, {"--publish="}, {"--publish", ""}, {"--publish", "3000"}, {"--publish", "3000:0"},
+		{"--publish", "3000:3000,8080:8000"}, {"--publish", "3000:3000", "--publish="},
+		{"--publish", "3000:3000", "--publish", "127.0.0.1:3000:3000"},
+		{"--publish", "6770:3000"}, {"--publish", "20128:3000"}, {"--publish", "4242:3000"},
+		{"--publish", "3000:3000", "--publish-clear"}, {"--publish-clear=false", "--publish", "3000:3000"},
+		{"--publish", "3000:3000", "--usb", "invalid"}, {"--usb-clear", "--publish="},
+		{"--port", "3000", "--publish", "3000:8000"},
+	} {
+		if err := Run(append([]string{"workspace", "config"}, args...)); err == nil {
+			t.Fatalf("accepted invalid publish CLI config: %v", args)
+		}
+		after, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatal("invalid publish invocation changed saved config", err)
+		}
+	}
+}
+
+func TestWorkspaceUSBAndPublishFlagCompletion(t *testing.T) {
 	t.Setenv("ADC_RUNTIME", "0")
 	for _, tc := range []struct {
 		args []string
@@ -234,6 +295,8 @@ func TestWorkspaceUSBFlagCompletion(t *testing.T) {
 	}{
 		{[]string{"__complete", "workspace", "config", "--us"}, []string{"--usb\t", "--usb-clear\t"}},
 		{[]string{"__complete", "workspace", "config", "--usb", ""}, []string{":4"}},
+		{[]string{"__complete", "workspace", "config", "--pu"}, []string{"--publish\t", "--publish-clear\t"}},
+		{[]string{"__complete", "workspace", "config", "--publish", ""}, []string{":4"}},
 	} {
 		var out bytes.Buffer
 		root := commandTree()

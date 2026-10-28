@@ -110,6 +110,13 @@ func TestDockerWorkspace(t *testing.T) {
 		}
 	})
 	run(root, "", "go", "build", "-o", cli, "./bin/adc")
+	fixtureBinary := filepath.Join(tmp, "runtime-fixture")
+	fixtureBuild := exec.Command("go", "test", "-c", "-o", fixtureBinary, "./bin/adc/integration")
+	fixtureBuild.Dir = root
+	fixtureBuild.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := fixtureBuild.CombinedOutput(); err != nil {
+		t.Fatalf("fixture build: %v %s", err, output)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -118,20 +125,29 @@ func TestDockerWorkspace(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
+	allocatedPorts := map[int]bool{port: true}
 	freePort := func() int {
 		t.Helper()
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
+		for {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			port := listener.Addr().(*net.TCPAddr).Port
+			if err := listener.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !allocatedPorts[port] {
+				allocatedPorts[port] = true
+				return port
+			}
 		}
-		port := listener.Addr().(*net.TCPAddr).Port
-		if err := listener.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return port
 	}
 	omniPort, graphPort := freePort(), freePort()
 	adc("workspace", "init", name, "--port", strconv.Itoa(port), "--omniroute-port", strconv.Itoa(omniPort), "--graph-port", strconv.Itoa(graphPort))
+	const publishedContainerPort = 27792
+	publishedHostPort := freePort()
+	adc("workspace", "config", "--publish", fmt.Sprintf("%d:%d", publishedHostPort, publishedContainerPort))
 	for _, id := range []string{"app-a", "app-b"} {
 		project := filepath.Join(tmp, id)
 		if err := os.Mkdir(project, 0755); err != nil {
@@ -180,6 +196,7 @@ func TestDockerWorkspace(t *testing.T) {
 	assertContains(startup, "Ctrl+C прекращает только ожидание")
 	assertContains(startup, "консоль свободна")
 	assertContains(adc("workspace", "status"), "running (готов)")
+	checkPublishedHTTPPort(t, docker, container, fixtureBinary, publishedHostPort, publishedContainerPort)
 	if strings.Contains(docker("info", "--format", "{{json .SecurityOptions}}"), "name=apparmor") {
 		assertContains(docker("inspect", "--format", "{{.AppArmorProfile}}", container), "adc-runtime-")
 	}
@@ -210,12 +227,19 @@ func TestDockerWorkspace(t *testing.T) {
 	execNode("sh", "-c", `printf 'PROMPT="ADC_PERSONAL_PROMPT "\n' > "$HOME/.zshrc"`)
 	removeContainer()
 	adc("workspace", "start")
+	checkPublishedHTTPPort(t, docker, container, fixtureBinary, publishedHostPort, publishedContainerPort)
 	custom := execNode("zsh", "-ic", `(( ! $+functions[omz] )) || exit 1; print -r -- "$PS1"`)
 	assertContains(custom, "ADC_PERSONAL_PROMPT")
 	// Restore the vendor-only profile and rerun initialization for the rest of the smoke.
 	execNode("sh", "-c", `printf '# Installer settings must survive\nexport PATH="$HOME/.local/bin:$PATH"\n' > "$HOME/.zshrc"`)
-	removeContainer()
+	previousContainer := strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container))
+	publishedHostPort = freePort()
+	adc("workspace", "config", "--publish", fmt.Sprintf("127.0.0.1:%d:%d", publishedHostPort, publishedContainerPort))
 	adc("workspace", "start")
+	if current := strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container)); current == previousContainer {
+		t.Fatal("changed published port did not recreate the container")
+	}
+	checkPublishedHTTPPort(t, docker, container, fixtureBinary, publishedHostPort, publishedContainerPort)
 	var status struct {
 		Result struct{ Runtime struct{ Reachable bool } }
 	}
@@ -339,13 +363,6 @@ func TestDockerWorkspace(t *testing.T) {
 	execNode("sh", "-c", `printf 'ADC_PERSIST_SMOKE\n' > "$HOME/adc-smoke-persist"; printf '# ADC_USER_SHELL_SETTINGS\n' >> "$HOME/.zshrc"; printf 'ADC_HISTORY_PERSIST\n' >> "$HOME/.history/.bash_history"`)
 
 	t.Log("checking capability activation and authenticated MCP doctor inside the runtime")
-	fixtureBinary := filepath.Join(tmp, "mcp-fixture")
-	fixtureBuild := exec.Command("go", "test", "-c", "-o", fixtureBinary, "./bin/adc/integration")
-	fixtureBuild.Dir = root
-	fixtureBuild.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if output, err := fixtureBuild.CombinedOutput(); err != nil {
-		t.Fatalf("fixture build: %v %s", err, output)
-	}
 	docker("cp", fixtureBinary, container+":/tmp/adc-mcp-fixture")
 	docker("exec", container, "chmod", "755", "/tmp/adc-mcp-fixture")
 	docker("exec", "-d", "--user", "node", "--env", "ADC_MCP_HTTP_FIXTURE=1", container, "/tmp/adc-mcp-fixture", "-test.run=^TestDockerMCPHTTPFixture$")
@@ -622,9 +639,14 @@ echo ADC_SANDBOX_READ_WRITE_OK
 	}
 	assertContains(adc("workspace", "status"), "exited")
 	adc("workspace", "start")
-	t.Log("recreating the container and checking persisted worktrees and home")
-	removeContainer()
+	t.Log("clearing published ports and checking persisted worktrees and home after recreation")
+	previousContainer = strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container))
+	adc("workspace", "config", "--publish-clear")
 	adc("workspace", "start")
+	if current := strings.TrimSpace(docker("inspect", "--format", "{{.Id}}", container)); current == previousContainer {
+		t.Fatal("clearing published ports did not recreate the container")
+	}
+	checkPublishedPortBindings(t, docker, container, 0, publishedContainerPort)
 	execNode("test", "-f", filepath.Join(worktree, "AGENTS.platform.md"))
 	assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
 	assertContains(execNode("cat", "/home/node/.zshrc"), "ADC_USER_SHELL_SETTINGS")

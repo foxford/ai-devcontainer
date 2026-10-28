@@ -63,10 +63,16 @@ func commandTree() *cobra.Command {
 		return dispatch(append(append([]string{"workspace", "init"}, args...), "--port", strconv.Itoa(*port), "--omniroute-port", strconv.Itoa(*omniPort), "--graph-port", strconv.Itoa(*graphPort)))
 	}
 	config := leaf(workspace, "config", "Показать или изменить порты и USB workspace", cobra.NoArgs, "workspace", "config")
-	config.Long = "Показать сохранённые порты и USB или изменить явно переданные значения. Повторяемый --usb VID:PID заменяет весь список USB; --usb-clear очищает его. Выбор USB сохраняется и без подключённых устройств. Применить изменения: adc workspace start. Изменение параметров запуска пересоздаст контейнер и завершит активные сеансы."
+	config.Long = "Показать сохранённые порты и USB или изменить явно переданные значения. Повторяемый --publish HOST:CONTAINER или IP:HOST:CONTAINER заменяет весь список пользовательских TCP-портов; --publish-clear очищает его. По умолчанию порты доступны на 127.0.0.1; IPv6-адрес указывается в квадратных скобках. Сервис внутри контейнера должен слушать 0.0.0.0 или подходящий IPv6-адрес. Повторяемый --usb VID:PID заменяет весь список USB; --usb-clear очищает его. Выбор USB сохраняется и без подключённых устройств. Применить изменения: adc workspace start. Изменение параметров запуска пересоздаст контейнер и завершит активные сеансы."
 	config.Flags().Int("port", 0, "Новый порт Orca на 127.0.0.1")
 	config.Flags().Int("omniroute-port", 0, "Новый порт OmniRoute на 127.0.0.1")
 	config.Flags().Int("graph-port", 0, "Новый порт просмотра графа на 127.0.0.1")
+	publishedPorts := config.Flags().StringArray("publish", nil, "TCP HOST:CONTAINER или IP:HOST:CONTAINER, например 3000:3000; повторите для нескольких портов")
+	config.Flags().Bool("publish-clear", false, "Очистить список пользовательских портов")
+	config.MarkFlagsMutuallyExclusive("publish", "publish-clear")
+	_ = config.RegisterFlagCompletionFunc("publish", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	})
 	usbDevices := config.Flags().StringArray("usb", nil, "USB VID:PID, например 2104:0313; повторите для нескольких устройств (Linux)")
 	config.Flags().Bool("usb-clear", false, "Очистить список USB-устройств")
 	config.MarkFlagsMutuallyExclusive("usb", "usb-clear")
@@ -80,6 +86,15 @@ func commandTree() *cobra.Command {
 				value, _ := c.Flags().GetInt(name)
 				argv = append(argv, "--"+name, strconv.Itoa(value))
 			}
+		}
+		if c.Flags().Changed("publish") {
+			for _, value := range *publishedPorts {
+				argv = append(argv, "--publish", value)
+			}
+		}
+		if c.Flags().Changed("publish-clear") {
+			value, _ := c.Flags().GetBool("publish-clear")
+			argv = append(argv, "--publish-clear="+strconv.FormatBool(value))
 		}
 		if c.Flags().Changed("usb") {
 			for _, value := range *usbDevices {

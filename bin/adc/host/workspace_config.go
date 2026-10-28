@@ -23,6 +23,16 @@ func (a *App) WorkspaceConfig(args []string, out io.Writer) error {
 	port := flags.Int("port", 0, "")
 	omniPort := flags.Int("omniroute-port", 0, "")
 	graphPort := flags.Int("graph-port", 0, "")
+	var publishedPorts []shared.PortMapping
+	flags.Func("publish", "", func(value string) error {
+		mapping, err := shared.ParsePortMapping(value)
+		if err != nil {
+			return err
+		}
+		publishedPorts = append(publishedPorts, mapping)
+		return nil
+	})
+	clearPublished := flags.Bool("publish-clear", false, "")
 	var usbDevices []string
 	flags.Func("usb", "", func(value string) error {
 		usbDevices = append(usbDevices, strings.ToLower(value))
@@ -37,6 +47,9 @@ func (a *App) WorkspaceConfig(args []string, out io.Writer) error {
 	}
 	changed := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { changed[f.Name] = true })
+	if changed["publish"] && changed["publish-clear"] {
+		return errors.New("--publish и --publish-clear нельзя использовать вместе")
+	}
 	if changed["usb"] && changed["usb-clear"] {
 		return errors.New("--usb и --usb-clear нельзя использовать вместе")
 	}
@@ -79,6 +92,11 @@ func (a *App) WorkspaceConfig(args []string, out io.Writer) error {
 				if changed["graph-port"] {
 					c.GraphPort = *graphPort
 				}
+				if changed["publish"] {
+					c.PublishedPorts = publishedPorts
+				} else if *clearPublished {
+					c.PublishedPorts = nil
+				}
 				if changed["usb"] {
 					c.USBDevices = usbDevices
 				} else if *clearUSB {
@@ -98,6 +116,14 @@ func (a *App) WorkspaceConfig(args []string, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "Workspace: %s\nСохранённые порты на хосте:\n  Orca: 127.0.0.1:%d (--port)\n  OmniRoute: 127.0.0.1:%d (--omniroute-port)\n  Граф: 127.0.0.1:%d (--graph-port)\n", c.Name, c.Port, c.GatewayPort(), c.PreviewPort())
+	if len(c.PublishedPorts) == 0 {
+		fmt.Fprintln(out, "Пользовательские TCP-порты: не выбраны (--publish HOST:CONTAINER).")
+	} else {
+		fmt.Fprintln(out, "Пользовательские TCP-порты (IP:HOST:CONTAINER):")
+		for _, mapping := range c.PublishedPorts {
+			fmt.Fprintf(out, "  %s\n", mapping.String())
+		}
+	}
 	if len(c.USBDevices) == 0 {
 		fmt.Fprintln(out, "USB: устройства не выбраны (--usb VID:PID).")
 	} else {

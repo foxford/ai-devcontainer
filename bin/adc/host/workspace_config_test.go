@@ -18,7 +18,8 @@ func workspaceConfigFixture(t *testing.T) (*App, shared.Config) {
 	t.Helper()
 	a := &App{State: t.TempDir()}
 	c := shared.Config{Version: shared.Schema, Name: "existing", Port: 6768, OmniRoutePort: 21128, GraphPort: 4342,
-		USBDevices: []string{"2104:0313"},
+		USBDevices:     []string{"2104:0313"},
+		PublishedPorts: []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 3000, ContainerPort: 3000}},
 		Projects: []shared.Project{{ID: "app", Path: filepath.Join(t.TempDir(), "repo"), RuntimePath: "/projects/app", ReadOnly: true,
 			Description: "existing project", Capabilities: []string{"graphify"}, Related: []string{"other"},
 			Knowledge: []shared.Knowledge{{Path: "/knowledge/project", Origin: "team", Updated: "2026-10-15"}}}},
@@ -65,7 +66,7 @@ func TestWorkspaceConfigReadsSavedPortsWithoutWritingOrDocker(t *testing.T) {
 	if err := a.WorkspaceConfig(nil, &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Сохранённые порты", "127.0.0.1:6768", "127.0.0.1:20128", "127.0.0.1:4242", "Выбранные USB (VID:PID): 2104:0313"} {
+	for _, want := range []string{"Сохранённые порты", "127.0.0.1:6768", "127.0.0.1:20128", "127.0.0.1:4242", "Выбранные USB (VID:PID): 2104:0313", "Пользовательские TCP-порты", "127.0.0.1:3000:3000"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -155,6 +156,50 @@ func TestWorkspaceConfigReplacesOrClearsUSBWithoutDocker(t *testing.T) {
 	}
 }
 
+func TestWorkspaceConfigReplacesOrClearsPublishedPortsWithoutDocker(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		mappings []shared.PortMapping
+		usb      []string
+		port     int
+	}{
+		{"replace", []string{"--publish", "8080:8000"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 8000}}, []string{"2104:0313"}, 6768},
+		{"replace multiple addresses", []string{"--publish", "0.0.0.0:8080:8000", "--publish=[::1]:3001:3000"}, []shared.PortMapping{{HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 8000}, {HostIP: "::1", HostPort: 3001, ContainerPort: 3000}}, []string{"2104:0313"}, 6768},
+		{"clear", []string{"--publish-clear"}, nil, []string{"2104:0313"}, 6768},
+		{"false preserves mappings", []string{"--publish-clear=false"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 3000, ContainerPort: 3000}}, []string{"2104:0313"}, 6768},
+		{"replace with USB", []string{"--publish", "8080:8000", "--usb", "ABCD:Ef01"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 8000}}, []string{"abcd:ef01"}, 6768},
+		{"replace and clear USB", []string{"--publish", "8080:8000", "--usb-clear"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 8000}}, nil, 6768},
+		{"swap builtin and published host port atomically", []string{"--port", "3000", "--publish", "6768:3000"}, []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 6768, ContainerPort: 3000}}, []string{"2104:0313"}, 3000},
+		{"clear and reuse host port", []string{"--publish-clear", "--port", "3000"}, nil, []string{"2104:0313"}, 3000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, want := workspaceConfigFixture(t)
+			want.PublishedPorts, want.USBDevices, want.Port = tc.mappings, tc.usb, tc.port
+			var out bytes.Buffer
+			if err := a.WorkspaceConfig(tc.args, &out); err != nil {
+				t.Fatal(err)
+			}
+			got, err := a.shared().Load()
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("got=%+v want=%+v err=%v", got, want, err)
+			}
+			if !strings.Contains(out.String(), "adc workspace start") || !strings.Contains(out.String(), "активные сеансы") {
+				t.Fatal("missing apply guidance", out.String())
+			}
+			if len(tc.mappings) == 0 && !strings.Contains(out.String(), "Пользовательские TCP-порты: не выбраны") {
+				t.Fatal("missing empty mappings", out.String())
+			}
+			for _, mapping := range tc.mappings {
+				if !strings.Contains(out.String(), mapping.String()) {
+					t.Fatalf("missing mapping %s: %s", mapping, out.String())
+				}
+			}
+		})
+	}
+}
+
 func TestWorkspaceConfigRejectsInvalidPortsWithoutWriting(t *testing.T) {
 	for _, args := range [][]string{
 		{"--port", "0"}, {"--port", "-1"}, {"--port", "65536"}, {"--port", "wat"}, {"--port"},
@@ -166,6 +211,17 @@ func TestWorkspaceConfigRejectsInvalidPortsWithoutWriting(t *testing.T) {
 		{"--usb", "2104:0313", "--usb-clear"}, {"--usb-clear", "--usb", "2104:0313"},
 		{"--usb", "2104:0313", "--usb-clear=false"}, {"--usb-clear=wrong"},
 		{"--port", "6770", "--usb", "invalid"},
+		{"--publish"}, {"--publish", ""}, {"--publish", "3000"}, {"--publish", "3000:0"},
+		{"--publish", "65536:3000"}, {"--publish", "3000:3000/udp"}, {"--publish", "3000:3000,8080:8000"},
+		{"--publish", "3000:3000", "--publish", "127.0.0.1:3000:8080"},
+		{"--publish", "0.0.0.0:3000:8080", "--publish", "3000:3000"},
+		{"--publish", "6768:3000"}, {"--publish", "21128:3000"}, {"--publish", "4342:3000"},
+		{"--publish", "3000:3000", "--publish-clear"}, {"--publish-clear", "--publish", "3000:3000"},
+		{"--publish", "3000:3000", "--publish-clear=false"}, {"--publish-clear=wrong"},
+		{"--port", "3000"}, {"--omniroute-port", "3000"}, {"--graph-port", "3000"},
+		{"--publish", "8080:8000", "--usb", "invalid"},
+		{"--usb-clear", "--publish", "6768:3000"},
+		{"--usb", "1234:5678", "--publish", "invalid"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			a, _ := workspaceConfigFixture(t)
@@ -199,7 +255,7 @@ func TestWorkspaceConfigRejectsPendingRecoveryWithoutWriting(t *testing.T) {
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			for _, args := range [][]string{{"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}} {
+			for _, args := range [][]string{{"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}, {"--publish", "8080:8000"}, {"--publish-clear"}} {
 				if err := a.WorkspaceConfig(args, io.Discard); err == nil {
 					t.Fatalf("changed settings during pending recovery: %v", args)
 				}
@@ -216,43 +272,54 @@ func TestWorkspaceConfigRejectsPendingRecoveryWithoutWriting(t *testing.T) {
 }
 
 func TestWorkspaceConfigLocksAndReloadsConcurrentChanges(t *testing.T) {
-	for _, lock := range []string{"lifecycle.lockfile", "write.lockfile"} {
-		t.Run(lock, func(t *testing.T) {
-			a, want := workspaceConfigFixture(t)
-			done := make(chan error, 1)
-			if err := a.shared().LockedFile(lock, func() error {
-				go func() { done <- a.WorkspaceConfig([]string{"--port", "6770"}, io.Discard) }()
-				select {
-				case err := <-done:
-					t.Fatalf("config bypassed %s: %v", lock, err)
-				case <-time.After(150 * time.Millisecond):
+	for _, option := range []string{"port", "publish"} {
+		for _, lock := range []string{"lifecycle.lockfile", "write.lockfile"} {
+			t.Run(option+"/"+lock, func(t *testing.T) {
+				a, want := workspaceConfigFixture(t)
+				args := []string{"--port", "6770"}
+				if option == "publish" {
+					args = []string{"--publish", "8080:8000"}
 				}
-				want.Knowledge = append(want.Knowledge, shared.Knowledge{Path: "/new/knowledge", Origin: "concurrent registration"})
-				return a.shared().Save(want)
-			}); err != nil {
-				t.Fatal(err)
-			}
-			select {
-			case err := <-done:
-				if err != nil {
+				done := make(chan error, 1)
+				if err := a.shared().LockedFile(lock, func() error {
+					go func() { done <- a.WorkspaceConfig(args, io.Discard) }()
+					select {
+					case err := <-done:
+						t.Fatalf("config bypassed %s: %v", lock, err)
+					case <-time.After(150 * time.Millisecond):
+					}
+					want.Knowledge = append(want.Knowledge, shared.Knowledge{Path: "/new/knowledge", Origin: "concurrent registration"})
+					want.USBDevices = []string{"1234:5678"}
+					return a.shared().Save(want)
+				}); err != nil {
 					t.Fatal(err)
 				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("config did not finish after lock release")
-			}
-			want.Port = 6770
-			got, err := a.shared().Load()
-			if err != nil || !reflect.DeepEqual(got, want) {
-				t.Fatal("config overwrote concurrent registration", got, err)
-			}
-		})
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("config did not finish after lock release")
+				}
+				if option == "publish" {
+					want.PublishedPorts = []shared.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 8000}}
+				} else {
+					want.Port = 6770
+				}
+				got, err := a.shared().Load()
+				if err != nil || !reflect.DeepEqual(got, want) {
+					t.Fatal("config overwrote concurrent registration", got, err)
+				}
+			})
+		}
 	}
 }
 
 func TestWorkspaceConfigRequiresHost(t *testing.T) {
 	a, _ := workspaceConfigFixture(t)
 	a.Runtime = true
-	for _, args := range [][]string{nil, {"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}} {
+	for _, args := range [][]string{nil, {"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}, {"--publish", "8080:8000"}, {"--publish-clear"}} {
 		if err := a.WorkspaceConfig(args, io.Discard); err == nil || !strings.Contains(err.Error(), "на хосте") {
 			t.Fatal("runtime accepted host config command", err)
 		}
