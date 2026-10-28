@@ -18,6 +18,7 @@ func workspaceConfigFixture(t *testing.T) (*App, shared.Config) {
 	t.Helper()
 	a := &App{State: t.TempDir()}
 	c := shared.Config{Version: shared.Schema, Name: "existing", Port: 6768, OmniRoutePort: 21128, GraphPort: 4342,
+		USBDevices: []string{"2104:0313"},
 		Projects: []shared.Project{{ID: "app", Path: filepath.Join(t.TempDir(), "repo"), RuntimePath: "/projects/app", ReadOnly: true,
 			Description: "existing project", Capabilities: []string{"graphify"}, Related: []string{"other"},
 			Knowledge: []shared.Knowledge{{Path: "/knowledge/project", Origin: "team", Updated: "2026-10-15"}}}},
@@ -64,7 +65,7 @@ func TestWorkspaceConfigReadsSavedPortsWithoutWritingOrDocker(t *testing.T) {
 	if err := a.WorkspaceConfig(nil, &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Сохранённые порты", "127.0.0.1:6768", "127.0.0.1:20128", "127.0.0.1:4242"} {
+	for _, want := range []string{"Сохранённые порты", "127.0.0.1:6768", "127.0.0.1:20128", "127.0.0.1:4242", "Выбранные USB (VID:PID): 2104:0313"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -112,12 +113,59 @@ func TestWorkspaceConfigChangesOnlyRequestedPortsWithoutDocker(t *testing.T) {
 	}
 }
 
+func TestWorkspaceConfigReplacesOrClearsUSBWithoutDocker(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, tc := range []struct {
+		name string
+		args []string
+		ids  []string
+		port int
+	}{
+		{"replace", []string{"--usb", "1234:5678"}, []string{"1234:5678"}, 6768},
+		{"replace multiple normalized", []string{"--usb", "ABCD:Ef01", "--usb=2104:0313"}, []string{"abcd:ef01", "2104:0313"}, 6768},
+		{"clear", []string{"--usb-clear"}, nil, 6768},
+		{"false preserves selection", []string{"--usb-clear=false"}, []string{"2104:0313"}, 6768},
+		{"USB and port together", []string{"--usb", "ABCD:Ef01", "--port", "6770"}, []string{"abcd:ef01"}, 6770},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, want := workspaceConfigFixture(t)
+			want.USBDevices, want.Port = tc.ids, tc.port
+			var out bytes.Buffer
+			if err := a.WorkspaceConfig(tc.args, &out); err != nil {
+				t.Fatal(err)
+			}
+			got, err := a.shared().Load()
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("got=%+v want=%+v err=%v", got, want, err)
+			}
+			for _, text := range []string{"adc workspace start", "пересоздаст контейнер", "активные сеансы"} {
+				if !strings.Contains(out.String(), text) {
+					t.Fatalf("missing apply guidance %q: %s", text, out.String())
+				}
+			}
+			if len(tc.ids) == 0 && !strings.Contains(out.String(), "USB: устройства не выбраны") {
+				t.Fatal("missing empty selection", out.String())
+			}
+			for _, id := range tc.ids {
+				if !strings.Contains(out.String(), id) {
+					t.Fatalf("missing selected device %s: %s", id, out.String())
+				}
+			}
+		})
+	}
+}
+
 func TestWorkspaceConfigRejectsInvalidPortsWithoutWriting(t *testing.T) {
 	for _, args := range [][]string{
 		{"--port", "0"}, {"--port", "-1"}, {"--port", "65536"}, {"--port", "wat"}, {"--port"},
 		{"--omniroute-port", "0"}, {"--omniroute-port", "65536"}, {"--graph-port", "0"}, {"--graph-port", "-1"},
 		{"--port", "21128"}, {"--port", "4342"}, {"--omniroute-port", "6768"}, {"--graph-port", "21128"},
 		{"--unknown", "1"}, {"name"}, {"--port", "6770", "extra"},
+		{"--usb", ""}, {"--usb"}, {"--usb", "2104:313"}, {"--usb", "2104:0313,1234:5678"},
+		{"--usb", "2104:0313", "--usb", "2104:0313"}, {"--usb", "ABCD:ef01", "--usb", "abcd:EF01"},
+		{"--usb", "2104:0313", "--usb-clear"}, {"--usb-clear", "--usb", "2104:0313"},
+		{"--usb", "2104:0313", "--usb-clear=false"}, {"--usb-clear=wrong"},
+		{"--port", "6770", "--usb", "invalid"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			a, _ := workspaceConfigFixture(t)
@@ -151,8 +199,10 @@ func TestWorkspaceConfigRejectsPendingRecoveryWithoutWriting(t *testing.T) {
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			if err := a.WorkspaceConfig([]string{"--port", "6770"}, io.Discard); err == nil {
-				t.Fatal("changed ports during pending recovery")
+			for _, args := range [][]string{{"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}} {
+				if err := a.WorkspaceConfig(args, io.Discard); err == nil {
+					t.Fatalf("changed settings during pending recovery: %v", args)
+				}
 			}
 			got, err := a.shared().Load()
 			if err != nil || !reflect.DeepEqual(got, c) {
@@ -202,7 +252,7 @@ func TestWorkspaceConfigLocksAndReloadsConcurrentChanges(t *testing.T) {
 func TestWorkspaceConfigRequiresHost(t *testing.T) {
 	a, _ := workspaceConfigFixture(t)
 	a.Runtime = true
-	for _, args := range [][]string{nil, {"--port", "6770"}} {
+	for _, args := range [][]string{nil, {"--port", "6770"}, {"--usb", "1234:5678"}, {"--usb-clear"}} {
 		if err := a.WorkspaceConfig(args, io.Discard); err == nil || !strings.Contains(err.Error(), "на хосте") {
 			t.Fatal("runtime accepted host config command", err)
 		}

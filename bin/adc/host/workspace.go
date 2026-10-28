@@ -136,6 +136,10 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 	if err := c.ValidatePorts(); err != nil {
 		return nil, err
 	}
+	usbArgs, err := usbDockerArgs(c)
+	if err != nil {
+		return nil, err
+	}
 	args := []string{"run", "-d", "--init", "--name", a.shared().Container(c), "--label", "adc.workspace=" + c.Name, "--restart", "unless-stopped", "-p", fmt.Sprintf("127.0.0.1:%d:6768", c.Port), "--add-host", "host.docker.internal:host-gateway", "-e", "ADC_RUNTIME=1", "-e", fmt.Sprintf("ADC_ORCA_PORT=%d", c.Port), "-e", "ADC_HOME=/var/lib/adc", "-e", "AI_DEVCONTAINER_HOME=/opt/ai-devcontainer", "-e", "LIBGL_ALWAYS_SOFTWARE=1", "--mount", "type=volume,src=adc-" + c.Name + "-home,dst=/home/node", "--mount", "type=volume,src=adc-" + c.Name + "-tools,dst=/opt/ai-tools", "--mount", "type=volume,src=adc-" + c.Name + "-worktrees,dst=/workspace"}
 	args = append(args, "--security-opt", "seccomp="+a.dockerSeccompPath())
 	args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:20128", c.GatewayPort()), "-p", fmt.Sprintf("127.0.0.1:%d:4242", c.PreviewPort()))
@@ -161,6 +165,7 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 	if value := os.Getenv("ADC_INSTALL_AI_TOOLS"); value != "" {
 		args = append(args, "-e", "ADC_INSTALL_AI_TOOLS="+value)
 	}
+	args = append(args, usbArgs...)
 	args = append(args, "adc-runtime:local")
 	return args, nil
 }

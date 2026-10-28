@@ -20,6 +20,8 @@ func TestDockerRuntimeRemapsIndependentVolumeOwners(t *testing.T) {
 	}
 	root := testutil.Root(t)
 	state := t.TempDir()
+	devices := t.TempDir()
+	device := filepath.Join(devices, "usb")
 	name := fmt.Sprintf("adc-uid-%d-%d", os.Getpid(), time.Now().UnixNano())
 	volumes := []string{name + "-home", name + "-tools", name + "-outside"}
 	run := func(args ...string) string {
@@ -56,6 +58,20 @@ func TestDockerRuntimeRemapsIndependentVolumeOwners(t *testing.T) {
 		}
 	})
 	run("build", "--build-arg", "ADC_INSTALL_AI_TOOLS=0", "-f", filepath.Join(root, "runtime/Dockerfile"), "-t", "adc-runtime:local", root)
+	// This isolated char device behaves like /dev/null. Its restrictive owner
+	// and group exercise USB access without requiring hardware or changing a
+	// real host device. The containing directory remains owned by the test.
+	run("run", "--rm", "--network", "none", "--entrypoint", "sh", "--mount", "type=bind,src="+devices+",dst=/fixture", "adc-runtime:local", "-c", `mknod /fixture/usb c 1 3 && chown 0:45678 /fixture/usb && chmod 0660 /fixture/usb`)
+	deviceMetadata := func() string {
+		t.Helper()
+		return strings.TrimSpace(run("run", "--rm", "--network", "none", "--entrypoint", "stat", "--mount", "type=bind,src="+devices+",dst=/fixture,readonly", "adc-runtime:local", "-c", "%u:%g:%a", "/fixture/usb"))
+	}
+	if metadata := deviceMetadata(); metadata != "0:45678:660" {
+		t.Fatalf("unexpected device fixture permissions: %s", metadata)
+	}
+	// Prove that the image's ordinary user cannot open the device before ADC
+	// adds its host group; world-writable fixtures would hide that regression.
+	run("run", "--rm", "--network", "none", "--device", device+":/dev/adc-usb-test:rw", "--entrypoint", "runuser", "adc-runtime:local", "-u", "node", "--", "sh", "-c", `if (printf 'probe\n' > /dev/adc-usb-test) 2>/dev/null; then exit 1; fi`)
 	for _, volume := range volumes {
 		run("volume", "create", volume)
 	}
@@ -67,7 +83,7 @@ func TestDockerRuntimeRemapsIndependentVolumeOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := append([]string{"run", "-d", "--name", name}, mounts...)
-	start = append(start, "--mount", "type=bind,src="+root+",dst=/opt/ai-devcontainer,readonly", "--mount", "type=bind,src="+state+",dst=/var/lib/adc", "-e", "ADC_UID=12345", "-e", "ADC_GID=12345", "-e", "ADC_INSTALL_AI_TOOLS=0", "adc-runtime:local")
+	start = append(start, "--mount", "type=bind,src="+root+",dst=/opt/ai-devcontainer,readonly", "--mount", "type=bind,src="+state+",dst=/var/lib/adc", "--device", device+":/dev/adc-usb-test:rw", "-e", "ADC_UID=12345", "-e", "ADC_GID=12345", "-e", "ADC_USB_GIDS=45678", "-e", "ADC_INSTALL_AI_TOOLS=0", "adc-runtime:local")
 	run(start...)
 	for attempt := 0; attempt < 90; attempt++ {
 		if err := exec.Command("docker", "exec", name, "test", "-e", "/tmp/adc-ready").Run(); err == nil {
@@ -79,5 +95,20 @@ func TestDockerRuntimeRemapsIndependentVolumeOwners(t *testing.T) {
 	result := run("exec", "--user", "node", name, "sh", "-c", `test "$(id -u)" = 12345 && test "$(id -g)" = 12345 && printf 'writable\n' > /opt/ai-tools/bin/uid-test && printf 'writable\n' > /home/node/uid-test && test "$(stat -c %u /outside/protected)" = 1000 && cat /opt/ai-tools/external && printf 'ADC_UID_OK\n'`)
 	if !strings.Contains(result, "ADC_UID_OK") || !strings.Contains(result, "unchanged") {
 		t.Fatal("UID remap lost writes or followed an external symlink")
+	}
+	probe := `test "$(id -u)" = 12345 && test "$(stat -c %u:%g:%a /dev/adc-usb-test)" = 0:45678:660 && test -c /dev/adc-usb-test && dd if=/dev/adc-usb-test of=/dev/null bs=1 count=1 status=none && printf 'writable\n' > /dev/adc-usb-test && printf 'ADC_USB_OK\n'`
+	for _, args := range [][]string{
+		{"exec", "--user", "node", name, "sh", "-c", probe},
+		{"exec", name, "runuser", "-u", "node", "--", "sh", "-c", probe},
+	} {
+		if output := run(args...); !strings.Contains(output, "ADC_USB_OK") {
+			t.Fatalf("non-root device probe did not complete: %s", output)
+		}
+	}
+	if output := run("exec", "--user", "node", name, "lsusb", "--version"); !strings.Contains(output, "usbutils") {
+		t.Fatalf("lsusb is unavailable: %s", output)
+	}
+	if metadata := deviceMetadata(); metadata != "0:45678:660" {
+		t.Fatalf("runtime changed host device permissions: %s", metadata)
 	}
 }

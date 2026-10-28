@@ -62,11 +62,17 @@ func commandTree() *cobra.Command {
 	init.RunE = func(c *cobra.Command, args []string) error {
 		return dispatch(append(append([]string{"workspace", "init"}, args...), "--port", strconv.Itoa(*port), "--omniroute-port", strconv.Itoa(*omniPort), "--graph-port", strconv.Itoa(*graphPort)))
 	}
-	config := leaf(workspace, "config", "Показать или изменить сохранённые порты workspace", cobra.NoArgs, "workspace", "config")
-	config.Long = "Показать сохранённые порты или изменить явно переданные значения. Применить изменения: adc workspace start. Если среда работает, перезапуск завершит активные сеансы."
+	config := leaf(workspace, "config", "Показать или изменить порты и USB workspace", cobra.NoArgs, "workspace", "config")
+	config.Long = "Показать сохранённые порты и USB или изменить явно переданные значения. Повторяемый --usb VID:PID заменяет весь список USB; --usb-clear очищает его. Выбор USB сохраняется и без подключённых устройств. Применить изменения: adc workspace start. Изменение параметров запуска пересоздаст контейнер и завершит активные сеансы."
 	config.Flags().Int("port", 0, "Новый порт Orca на 127.0.0.1")
 	config.Flags().Int("omniroute-port", 0, "Новый порт OmniRoute на 127.0.0.1")
 	config.Flags().Int("graph-port", 0, "Новый порт просмотра графа на 127.0.0.1")
+	usbDevices := config.Flags().StringArray("usb", nil, "USB VID:PID, например 2104:0313; повторите для нескольких устройств (Linux)")
+	config.Flags().Bool("usb-clear", false, "Очистить список USB-устройств")
+	config.MarkFlagsMutuallyExclusive("usb", "usb-clear")
+	_ = config.RegisterFlagCompletionFunc("usb", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	})
 	config.RunE = func(c *cobra.Command, args []string) error {
 		argv := []string{}
 		for _, name := range []string{"port", "omniroute-port", "graph-port"} {
@@ -74,6 +80,15 @@ func commandTree() *cobra.Command {
 				value, _ := c.Flags().GetInt(name)
 				argv = append(argv, "--"+name, strconv.Itoa(value))
 			}
+		}
+		if c.Flags().Changed("usb") {
+			for _, value := range *usbDevices {
+				argv = append(argv, "--usb", value)
+			}
+		}
+		if c.Flags().Changed("usb-clear") {
+			value, _ := c.Flags().GetBool("usb-clear")
+			argv = append(argv, "--usb-clear="+strconv.FormatBool(value))
 		}
 		a, err := shared.New()
 		if err != nil {

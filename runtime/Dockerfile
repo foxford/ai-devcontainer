@@ -22,6 +22,7 @@ RUN apt-get update && \
       jq yq \
       python3 \
       htop procps \
+      usbutils \
       nmap dnsutils mtr net-tools \
       zsh less \
       locales \

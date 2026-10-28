@@ -149,6 +149,13 @@ func TestWorkspaceConfigHelpAndCompletion(t *testing.T) {
 		if command == "config" && (!strings.Contains(help.String(), "adc workspace start") || !strings.Contains(help.String(), "активные сеансы")) {
 			t.Fatal("config help missing apply guidance", help.String())
 		}
+		if command == "config" {
+			for _, flag := range []string{"--usb", "--usb-clear", "VID:PID"} {
+				if !strings.Contains(help.String(), flag) {
+					t.Fatalf("config help missing USB guidance %s: %s", flag, help.String())
+				}
+			}
+		}
 	}
 	for _, side := range []string{"0", "1"} {
 		t.Setenv("ADC_RUNTIME", side)
@@ -162,6 +169,84 @@ func TestWorkspaceConfigHelpAndCompletion(t *testing.T) {
 		}
 		if strings.Contains(out.String(), "config\t") != (side == "0") {
 			t.Fatal("config completion does not match execution side", side, out.String())
+		}
+	}
+}
+
+func TestWorkspaceUSBConfigCLI(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	t.Setenv("ADC_HOME", t.TempDir())
+	if err := Run([]string{"workspace", "init", "configured"}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := shared.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	for _, tc := range []struct {
+		args []string
+		ids  []string
+	}{
+		{[]string{"--usb", "ABCD:Ef01", "--usb=2104:0313"}, []string{"abcd:ef01", "2104:0313"}},
+		{[]string{"--port", "6780"}, []string{"abcd:ef01", "2104:0313"}},
+		{[]string{"--usb=1234:5678"}, []string{"1234:5678"}},
+		{[]string{"--usb-clear=false"}, []string{"1234:5678"}},
+		{[]string{"--usb-clear"}, nil},
+		{nil, nil},
+	} {
+		root := commandTree()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetArgs(append([]string{"workspace", "config"}, tc.args...))
+		if err := root.Execute(); err != nil {
+			t.Fatalf("args=%v err=%v", tc.args, err)
+		}
+		got, err := a.Load()
+		if err != nil || !reflect.DeepEqual(got.USBDevices, tc.ids) {
+			t.Fatalf("args=%v devices=%v want=%v err=%v", tc.args, got.USBDevices, tc.ids, err)
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--usb"}, {"--usb="}, {"--usb", "2104:313"}, {"--usb", "2104:0313,1234:5678"},
+		{"--usb", "2104:0313", "--usb", "2104:0313"}, {"--usb", "ABCD:ef01", "--usb", "abcd:EF01"},
+		{"--usb", "2104:0313", "--usb-clear"}, {"--usb-clear=false", "--usb", "2104:0313"},
+	} {
+		if err := Run(append([]string{"workspace", "config"}, args...)); err == nil {
+			t.Fatalf("accepted invalid USB CLI config: %v", args)
+		}
+		after, err := os.ReadFile(filepath.Join(a.State, "workspace.json"))
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatal("invalid USB invocation changed saved config", err)
+		}
+	}
+}
+
+func TestWorkspaceUSBFlagCompletion(t *testing.T) {
+	t.Setenv("ADC_RUNTIME", "0")
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"__complete", "workspace", "config", "--us"}, []string{"--usb\t", "--usb-clear\t"}},
+		{[]string{"__complete", "workspace", "config", "--usb", ""}, []string{":4"}},
+	} {
+		var out bytes.Buffer
+		root := commandTree()
+		root.SetOut(&out)
+		root.SetErr(&out)
+		root.SetArgs(tc.args)
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(out.String(), want) {
+				t.Fatalf("completion %v missing %q: %s", tc.args, want, out.String())
+			}
 		}
 	}
 }

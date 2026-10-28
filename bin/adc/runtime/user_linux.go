@@ -49,6 +49,11 @@ func runtimeUser() error {
 			return err
 		}
 	}
+	if err := runtimeUSBGroups(os.Getenv("ADC_USB_GIDS"), gid, user.LookupGroupId, func(name string, args ...string) error {
+		return shared.Run("", name, args...)
+	}); err != nil {
+		return err
+	}
 	for _, root := range []string{"/home/node", "/opt/ai-tools", "/workspace", "/var/lib/adc"} {
 		if err := os.MkdirAll(root, 0755); err != nil {
 			return err

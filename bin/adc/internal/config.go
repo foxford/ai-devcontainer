@@ -44,6 +44,7 @@ type Config struct {
 	Port          int         `json:"port"`
 	OmniRoutePort int         `json:"omniroutePort,omitempty"`
 	GraphPort     int         `json:"graphPort,omitempty"`
+	USBDevices    []string    `json:"usbDevices,omitempty"`
 	Projects      []Project   `json:"projects"`
 	Knowledge     []Knowledge `json:"knowledge,omitempty"`
 }
@@ -123,6 +124,9 @@ func (a *App) Load() (Config, error) {
 		return c, errors.New("некорректное имя или порт workspace")
 	}
 	if err := c.ValidatePorts(); err != nil {
+		return c, err
+	}
+	if err := c.ValidateUSBDevices(); err != nil {
 		return c, err
 	}
 	seen := map[string]bool{}
