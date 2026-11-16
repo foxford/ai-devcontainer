@@ -180,13 +180,25 @@ func (a *App) DockerArgs(c shared.Config) ([]string, error) {
 func (a *App) EnsureImage() error {
 	// Legacy import may already hold write.lockfile. Keep this build helper free
 	// of host lifecycle locks; Update and Start acquire their locks explicitly.
-	_, err := a.ensureImage()
+	_, err := a.ensureImage(realDocker())
 	return err
 }
 
-func (a *App) ensureImage() (string, error) {
-	if _, e := shared.Output("", "docker", "info", "--format", "{{.OSType}}"); e != nil {
+func (a *App) ensureImage(d dockerCommands) (string, error) {
+	if _, e := d.output("info", "--format", "{{.OSType}}"); e != nil {
 		return "", fmt.Errorf("Docker недоступен; adc install: %w", e)
+	}
+	// Contexts have their own built-in docker builder. A literal "default"
+	// selects the wrong builder under OrbStack, Docker Desktop and other named
+	// contexts. Let Docker resolve DOCKER_CONTEXT/DOCKER_HOST and its config;
+	// using that builder also keeps BUILDX_BUILDER from targeting another daemon.
+	builder, err := d.output("context", "show")
+	if err != nil {
+		return "", fmt.Errorf("Docker context: %w", err)
+	}
+	builder = strings.TrimSpace(builder)
+	if builder == "" {
+		return "", errors.New("Docker не вернул текущий context")
 	}
 	if err := os.MkdirAll(a.State, 0700); err != nil {
 		return "", err
@@ -201,7 +213,7 @@ func (a *App) ensureImage() (string, error) {
 	}
 	// BuildKit writes the ID of this build even if another ADC installation
 	// changes the shared local tag before container creation.
-	if err := shared.Run("", "docker", "build", "--builder", "default", "--iidfile", file.Name(), "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "--build-arg", "ADC_REVISION="+shared.SourceRevision(a.Platform), "-t", "adc-runtime:local", a.Platform); err != nil {
+	if err := d.run("build", "--builder", builder, "--iidfile", file.Name(), "-f", filepath.Join(a.Platform, "runtime", "Dockerfile"), "--build-arg", "ADC_REVISION="+shared.SourceRevision(a.Platform), "-t", "adc-runtime:local", a.Platform); err != nil {
 		return "", err
 	}
 	data, err := os.ReadFile(file.Name())
@@ -225,7 +237,7 @@ func (a *App) Start(c shared.Config) error {
 			if resumed, err := a.resumeReplacement(c, realDocker(), a.replacementWait(c)); resumed || err != nil {
 				return err
 			}
-			image, err := a.ensureImage()
+			image, err := a.ensureImage(realDocker())
 			if err != nil {
 				return err
 			}

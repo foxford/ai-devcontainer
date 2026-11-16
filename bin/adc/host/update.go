@@ -45,7 +45,7 @@ func (a *App) applyUpdate(install func() error) error {
 		}
 	}
 	return updateWorkspace(state, func() error {
-		image, err := a.ensureImage()
+		image, err := a.ensureImage(realDocker())
 		if err != nil {
 			return err
 		}

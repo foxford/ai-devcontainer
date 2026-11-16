@@ -3,6 +3,7 @@ package host
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -61,6 +62,39 @@ func TestReadOrcaPairingUsesLatestReadyEvent(t *testing.T) {
 	got, err := readOrcaPairing(strings.NewReader("no ready event\n"))
 	if err != nil || got != "" {
 		t.Fatalf("pairing=%q error=%v", got, err)
+	}
+}
+
+func TestWorkspacePairingPrintsURLOnItsOwnLineUnchanged(t *testing.T) {
+	for _, tc := range []struct {
+		name, pairingURL string
+	}{
+		{"long base64url code", "orca://pair?code=" + strings.Repeat("test_ONLY-0123456789", 128)},
+		{"JSON and URL escapes", "orca://pair?code=test%2Bvalue%2Fvalue%3D&v=1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// JSON encoding escapes the ampersand; URL escapes must survive decoding.
+			event, err := json.Marshal(map[string]any{
+				"type": "orca_server_ready",
+				"pairing": map[string]any{
+					"available": true,
+					"url":       tc.pairingURL,
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pairingURL, err := readOrcaPairing(bytes.NewReader(event))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			printWorkspacePairing(&out, 6770, pairingURL)
+			want := "Orca → Add Server → 127.0.0.1:6770\nAccess link:\n" + tc.pairingURL + "\n"
+			if out.String() != want {
+				t.Fatalf("pairing output changed the URL or added text to its line: got %q, want %q", out.String(), want)
+			}
+		})
 	}
 }
 
@@ -174,7 +208,7 @@ esac
 				t.Fatalf("incorrect ready output: %s", data)
 			}
 			if mode == "ready" {
-				if !bytes.Contains(data, []byte("Access link: orca://pair?code=test-only\n")) {
+				if !bytes.Contains(data, []byte("Access link:\norca://pair?code=test-only\n")) {
 					t.Fatalf("missing current pairing: %s", data)
 				}
 			} else if !bytes.Contains(data, []byte("adc workspace logs")) || bytes.Contains(data, []byte("orca://pair")) {

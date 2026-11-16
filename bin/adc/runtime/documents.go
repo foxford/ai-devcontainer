@@ -48,10 +48,11 @@ func (a *App) ownedDeliveryDocument(path string, doc shared.DeliveryDocument) bo
 		}
 	}
 	legacy := map[string][]string{
+		"AGENTS.platform.md":              {"docs/AGENTS.platform.md"},
 		".agents/skills/README.md":        {"docs/skills-README.md", "delivery/documents/skills-README.md"},
 		"plans/README.md":                 {"docs/plans-README.md", "delivery/documents/plans-README.md"},
 		"MONOREPO.md":                     {"docs/MONOREPO.md", "delivery/documents/MONOREPO.md"},
-		".agents/mcp.secrets.env.example": {"docs/mcp-secrets.example"},
+		".agents/mcp.secrets.env.example": {"docs/mcp-secrets.env.example", "docs/mcp-secrets.example"},
 	}
 	for _, root := range []string{a.Platform, "/opt/ai-devcontainer", "/opt/dev-platform"} {
 		for _, rel := range legacy[doc.Target] {

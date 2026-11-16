@@ -190,9 +190,23 @@ func (a *App) SyncProject(p shared.Project) error {
 	b.Write(core)
 	fmt.Fprintf(&b, "\n## Этот checkout\n\nProject: `%s`. Path: `%s`. MCP namespace: `%s-`.\n\nПрочитай `/workspace/AGENTS.workspace.md`, чтобы видеть остальные проекты и источники знаний. Проектные скиллы перечислены в AGENTS.skills.md; читай соответствующий SKILL.md по ссылке в этом индексе.\n", p.ID, root, namespace)
 	target := filepath.Join(root, "AGENTS.platform.md")
-	old, e := os.ReadFile(target)
-	if e == nil && !strings.Contains(string(old), "ai-devcontainer:generated") {
-		return errors.New("AGENTS.platform.md принадлежит проекту; перенесите проектные правила в AGENTS.md")
+	if _, err := os.Lstat(target); err == nil {
+		documents, err := a.documents(capabilities)
+		if err != nil {
+			return err
+		}
+		owned := ownedDocument(target, "")
+		for _, document := range documents {
+			if document.Target == "AGENTS.platform.md" {
+				owned = a.ownedDeliveryDocument(target, document)
+				break
+			}
+		}
+		if !owned {
+			return errors.New("AGENTS.platform.md принадлежит проекту; перенесите проектные правила в AGENTS.md")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	if e = shared.AtomicWrite(target, []byte(b.String()), 0644); e != nil {
 		return e

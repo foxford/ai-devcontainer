@@ -101,5 +101,6 @@ func printWorkspacePairing(out io.Writer, port int, pairingURL string) {
 		fmt.Fprintln(out, "Не удалось получить pairing URL. Откройте adc workspace logs и найдите pairing.url в последнем событии orca_server_ready.")
 		return
 	}
-	fmt.Fprintf(out, "Access link: %s\n", pairingURL)
+	// Keep the URL on its own logical line for copying, without decoration or wrapping.
+	fmt.Fprintf(out, "Access link:\n%s\n", pairingURL)
 }
