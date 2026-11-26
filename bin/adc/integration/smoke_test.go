@@ -217,6 +217,7 @@ func TestDockerWorkspace(t *testing.T) {
 	}
 	execNode("bash", "-lc", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.bash_history" && node --version && go version && rustc --version && bun --version`)
 	execNode("zsh", "-lic", `test "$(command -v codex)" = /opt/adc-agents/codex && test "$HISTFILE" = "$HOME/.history/.zsh_history"`)
+	verifyRuby := checkRubyToolchain(t, docker, container, filepath.Join(tmp, "app-a"), filepath.Join(tmp, "app-b"))
 	assertContains(execNode("cat", "/home/node/.codex/auth.json"), "ADC_IMPORTED_AUTH")
 	zsh := docker("exec", "-t", "--user", "node", "--workdir", filepath.Join(tmp, "app-a"), container, "zsh", "-ic", `(( $+functions[omz] && $+functions[p10k] )) || exit 1; [[ "$ZSH_THEME" == powerlevel10k/powerlevel10k ]] || exit 1; print -r -- "ADC_PROMPT=$PS1"`)
 	assertContains(zsh, "ADC · "+name)
@@ -651,6 +652,7 @@ echo ADC_SANDBOX_READ_WRITE_OK
 	assertContains(execNode("cat", "/home/node/adc-smoke-persist"), "ADC_PERSIST_SMOKE")
 	assertContains(execNode("cat", "/home/node/.zshrc"), "ADC_USER_SHELL_SETTINGS")
 	assertContains(execNode("cat", "/home/node/.history/.bash_history"), "ADC_HISTORY_PERSIST")
+	verifyRuby()
 	if verifyBundles != nil {
 		verifyBundles()
 	}

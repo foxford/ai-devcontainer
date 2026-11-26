@@ -18,6 +18,8 @@ RUN apt-get update && \
       sudo \
       bubblewrap \
       build-essential make pkg-config \
+      autoconf libssl-dev libyaml-dev zlib1g-dev libffi-dev libgmp-dev \
+      cmake libpq-dev libclang-dev libgit2-dev libzstd-dev imagemagick \
       unzip \
       jq yq \
       python3 \
@@ -32,6 +34,26 @@ RUN apt-get update && \
       nano \
       fzf \
     && rm -rf /var/lib/apt/lists/*
+
+# Keep the manager and plugin seed outside the persistent home volume.
+# Ruby versions are installed explicitly from each project's .tool-versions.
+COPY runtime/asdf-lock.json /tmp/asdf-lock.json
+RUN arch="$(dpkg --print-architecture)" && \
+    url="$(jq -er --arg target "linux/$arch" '.asdf.assets[$target].url' /tmp/asdf-lock.json)" && \
+    digest="$(jq -er --arg target "linux/$arch" '.asdf.assets[$target].sha256' /tmp/asdf-lock.json)" && \
+    curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+      "$url" -o /tmp/asdf.tar.gz && \
+    printf '%s  /tmp/asdf.tar.gz\n' "$digest" | sha256sum -c - && \
+    tar -xzf /tmp/asdf.tar.gz -C /usr/local/bin asdf && \
+    chmod 0755 /usr/local/bin/asdf && \
+    repository="$(jq -er '.rubyPlugin.repository' /tmp/asdf-lock.json)" && \
+    revision="$(jq -er '.rubyPlugin.revision' /tmp/asdf-lock.json)" && \
+    git init /opt/adc-asdf-ruby && \
+    git -C /opt/adc-asdf-ruby remote add origin "$repository" && \
+    git -C /opt/adc-asdf-ruby fetch --depth=1 origin "$revision" && \
+    git -C /opt/adc-asdf-ruby checkout --detach FETCH_HEAD && \
+    test "$(git -C /opt/adc-asdf-ruby rev-parse HEAD)" = "$revision" && \
+    rm /tmp/asdf.tar.gz /tmp/asdf-lock.json
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -71,7 +93,7 @@ ENV CLAUDE_CONFIG_DIR=/home/node/.claude
 ENV GRAPHIFY_VIZ_NODE_LIMIT=50000
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
 ENV EDITOR=nano VISUAL=nano SHELL=/usr/bin/zsh
-ENV PATH=/home/node/.asdf/shims:/home/node/.asdf/bin:/opt/ai-tools/bin:/home/node/.npm-global/bin:/home/node/.local/bin:${PATH}
+ENV PATH=/home/node/.asdf/shims:/opt/ai-tools/bin:/home/node/.npm-global/bin:/home/node/.local/bin:${PATH}
 
 RUN mkdir -p \
       /home/node/.pnpm-store \
@@ -140,7 +162,7 @@ RUN mkdir -p /opt/adc-agents && \
     done
 ENV ADC_RUNTIME=1 ADC_HOME=/var/lib/adc AI_DEVCONTAINER_HOME=/opt/ai-devcontainer \
     ADC_WORKSPACE=developer AI_TOOLS_HOME=/opt/ai-tools \
-    PATH=/opt/adc-agents:/home/node/.asdf/shims:/home/node/.asdf/bin:/opt/ai-tools/bin:/home/node/.npm-global/bin:/home/node/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/bun/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin \
+    PATH=/opt/adc-agents:/home/node/.asdf/shims:/opt/ai-tools/bin:/home/node/.npm-global/bin:/home/node/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/bun/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin \
     LIBGL_ALWAYS_SOFTWARE=1
 WORKDIR /workspace
 ENTRYPOINT ["adc", "runtime-serve"]

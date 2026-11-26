@@ -20,7 +20,7 @@ func initializeShells(home, seed string) error {
 			return err
 		}
 		defer os.RemoveAll(staging)
-		if err := copyShellAssets(filepath.Join(seed, ".oh-my-zsh"), staging); err != nil {
+		if err := copyRuntimeAssets(filepath.Join(seed, ".oh-my-zsh"), staging); err != nil {
 			return err
 		}
 		if err := os.Rename(staging, framework); err != nil {
@@ -80,7 +80,7 @@ esac
 	return nil
 }
 
-func copyShellAssets(source, target string) error {
+func copyRuntimeAssets(source, target string) error {
 	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -105,7 +105,7 @@ func copyShellAssets(source, target string) error {
 			return os.Symlink(link, dest)
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("неподдерживаемый файл оболочки: %s", path)
+			return fmt.Errorf("неподдерживаемый файл runtime: %s", path)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {

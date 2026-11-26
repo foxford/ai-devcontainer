@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "asdf": {
+    "version": "0.20.2",
+    "assets": {
+      "linux/amd64": {
+        "url": "https://github.com/asdf-vm/asdf/releases/download/v0.20.2/asdf-v0.20.2-linux-amd64.tar.gz",
+        "sha256": "6d45e6fab12f50a259b5643adf06a2e77af30a87300b4402440eda09af467a6d"
+      },
+      "linux/arm64": {
+        "url": "https://github.com/asdf-vm/asdf/releases/download/v0.20.2/asdf-v0.20.2-linux-arm64.tar.gz",
+        "sha256": "356e135a608bdfba34038c1f18c4b82434d7b6d546e30dbf372c61baaa2f442c"
+      }
+    }
+  },
+  "rubyPlugin": {
+    "repository": "https://github.com/asdf-vm/asdf-ruby.git",
+    "revision": "26918643b43cd297635a882ece4dc38916b69567"
+  }
+}

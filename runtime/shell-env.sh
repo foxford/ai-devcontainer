@@ -10,7 +10,7 @@ export GRAPHIFY_NO_AUTO_REFRESH=1 GRAPHIFY_NO_TIPS=1
 export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
 # Restore tools after /etc/profile resets PATH; sourcing twice is harmless.
 if [ "${ADC_SHELL_PATH:-}" != "$PATH" ]; then
-  export PATH="/opt/adc-agents:$HOME/.asdf/shims:$HOME/.asdf/bin:$AI_TOOLS_HOME/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/bun/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:$PATH"
+  export PATH="/opt/adc-agents:$HOME/.asdf/shims:$AI_TOOLS_HOME/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/bun/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:$PATH"
   export ADC_SHELL_PATH="$PATH"
 fi
 mkdir -p "$HOME/.history"

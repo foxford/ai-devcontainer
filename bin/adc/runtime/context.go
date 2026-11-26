@@ -400,6 +400,9 @@ func (a *App) Init() error {
 	if e = initializeShells(home, "/opt/adc-shell"); e != nil {
 		return e
 	}
+	if e = a.shared().Locked(func() error { return initializeRuby(home, "/opt/adc-asdf-ruby") }); e != nil {
+		return e
+	}
 	if os.Getenv("ADC_INSTALL_AI_TOOLS") != "0" {
 		shared.StartupProgress("Установка браузеров выбранных MCP")
 		if e = a.InstallMCPBrowsers(c); e != nil {
